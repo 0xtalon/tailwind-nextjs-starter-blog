@@ -1,1 +1,1 @@
-{"ssrf":1,"rfi":1}
+{"ssrf":1,"rfi":1,"ssti":1,"rce":1}

