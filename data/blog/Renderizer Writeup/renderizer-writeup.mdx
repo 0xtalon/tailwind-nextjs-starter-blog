@@ -1,12 +1,13 @@
 ---
 title: 'Renderizer Writeup'
 date: '2024-07-13'
-tags: ['SSTI','RCE']
+tags: ['SSTI', 'RCE']
 draft: false
 summary: 'Writeup do CTF Renderizer da Hacking Club.'
 images: ['/static/images/renderizer-writeup-images/1.png']
 authors: ['default']
 ---
+
 ![Writeup-Renderizer 1](/static/images/renderizer-writeup-images/1.png)
 
 ## **Plataforma**: Hacking Club
@@ -17,6 +18,8 @@ authors: ['default']
 
 ### IP: 172.16.14.128
 
+---
+
 ## Port Scanning
 
 `nmap -sV -sC -p- -v $IP --open`
@@ -24,12 +27,12 @@ authors: ['default']
 ```python
 PORT   STATE SERVICE VERSION
 22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.4 (Ubuntu Linux; protocol 2.0)
-| ssh-hostkey: 
+| ssh-hostkey:
 |   256 f7:37:6a:01:16:84:08:ea:92:19:b0:b3:ba:22:71:34 (ECDSA)
 |_  256 59:00:f0:d6:c4:d4:f3:91:85:8f:1a:d2:1d:29:87:9e (ED25519)
 80/tcp open  http    nginx 1.18.0 (Ubuntu)
 |_http-server-header: nginx/1.18.0 (Ubuntu)
-| http-methods: 
+| http-methods:
 |_  Supported Methods: OPTIONS GET HEAD
 |_http-title: Renderizer
 Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
@@ -44,8 +47,8 @@ Somente as portas 22(SSH) e 80 (HTTP) estão abertas.
 
 `sudo vim /etc/hosts`
 ![Writeup-Renderizer 3](/static/images/renderizer-writeup-images/3.png)
-### [http://renderizer.hc](http://renderizer.hc)
 
+### [http://renderizer.hc](http://renderizer.hc)
 
 ![Writeup-Renderizer 4](/static/images/renderizer-writeup-images/4.png)
 ![Writeup-Renderizer 5](/static/images/renderizer-writeup-images/5.png)
@@ -96,6 +99,7 @@ Payload do mano vert16x pra achar a posição do array do Popen automaticamente 
 ```
 
 ![Writeup-Renderizer 10](/static/images/renderizer-writeup-images/10.png)
+
 ## Privillege Escalation
 
 `cat /etc/crontab`
@@ -118,7 +122,7 @@ Se eu tentar dar o `unzip webapp-03-01-2024.zip` ele da permission denied
 
 ![Writeup-Renderizer 13](/static/images/renderizer-writeup-images/13.png)
 
-Então a gente precisa copiar esse `webapp-03-01-2024.zip` pra pasta tmp 
+Então a gente precisa copiar esse `webapp-03-01-2024.zip` pra pasta tmp
 `cp webapp-03-01-2024.zip /tmp`
 
 Na pasta tmp basta a gente unzipar o arquivo:
@@ -169,7 +173,7 @@ E o /bin/bash vai virar SUID após a execução do logstash.
 
 ![Writeup-Renderizer 19](/static/images/renderizer-writeup-images/19.png)
 ![Writeup-Renderizer 20](/static/images/renderizer-writeup-images/20.png)
+
 ## Proof
 
 ![Writeup-Renderizer 21](/static/images/renderizer-writeup-images/21.png)
-
