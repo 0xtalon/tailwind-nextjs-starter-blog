@@ -1,1 +1,1 @@
-{"ssrf":1,"rfi":1,"ssti":1,"rce":1}
+{ "cve-2024-29510": 1, "linux": 3, "ssti": 1, "rce": 1, "ssrf": 1, "rfi": 1 }

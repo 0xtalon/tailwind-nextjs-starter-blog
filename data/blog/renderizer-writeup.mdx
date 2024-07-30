@@ -1,7 +1,7 @@
 ---
 title: 'Renderizer Writeup'
 date: '2024-07-13'
-tags: ['SSTI', 'RCE']
+tags: ['SSTI', 'RCE', 'Linux']
 draft: false
 summary: 'Writeup do CTF Renderizer da Hacking Club.'
 images: ['/static/images/renderizer-writeup-images/1.png']
@@ -20,7 +20,7 @@ authors: ['default']
 
 ---
 
-## Port Scanning
+### Port Scanning
 
 `nmap -sV -sC -p- -v $IP --open`
 
@@ -53,7 +53,7 @@ Somente as portas 22(SSH) e 80 (HTTP) estão abertas.
 ![Writeup-Renderizer 4](/static/images/renderizer-writeup-images/4.png)
 ![Writeup-Renderizer 5](/static/images/renderizer-writeup-images/5.png)
 
-Ele diz que é um jinja2 , a gente pode deduzir que se trata de um SSTI (Server-Side Tempalte Injection), pra testar eu mandei um `{{7*7}}.`
+Ele diz que é um jinja2 , a gente pode deduzir que se trata de um SSTI (Server-Side Template Injection), pra testar eu mandei um `{{7*7}}.`
 
 ![Writeup-Renderizer 6](/static/images/renderizer-writeup-images/6.png)
 
