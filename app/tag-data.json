@@ -1,12 +1,19 @@
 {
-  "lfi": 1,
-  "rce": 2,
-  "linux": 6,
+  "sqli": 4,
+  "linux": 14,
+  "cve-2022-36231": 1,
+  "command-injection": 2,
+  "bola": 1,
+  "lfi": 2,
+  "rce": 5,
+  "cve-2023-33733": 1,
+  "api-rest": 1,
+  "idor": 2,
+  "windows": 1,
   "cve-2022-29464": 1,
   "cve-2024-29510": 1,
   "ssti": 1,
   "ssrf": 1,
   "rfi": 1,
-  "sqli": 1,
   "code-injection": 1
 }
