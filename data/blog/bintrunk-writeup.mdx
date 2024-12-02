@@ -1,0 +1,173 @@
+---
+title: 'Bin Trunk Writeup'
+date: '2024-11-23'
+tags: ['BOLA', 'Linux']
+draft: false
+summary: 'Aplicação possui vulnerabilidade de BOLA, acesso indevido a arquivos, uso de chave SSH elevação de privilégios via SUID e execução de código.'
+images: ['/static/images/bintrunk-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/bintrunk-writeup-images/default.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: Bin Trunk
+
+---
+
+### **Port Scanning**
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.6 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 23:16:ce:2d:97:22:5d:6b:5e:7c:71:98:2d:6e:70:db (ECDSA)
+|_  256 17:1e:76:5e:c4:54:19:91:40:90:cb:ba:91:44:0c:b7 (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+| http-methods:
+|_  Supported Methods: GET HEAD
+|_http-title: Document
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+```
+
+## **Enumeration**
+
+`http://172.16.2.72`
+
+![bintrunk](/static/images/bintrunk-writeup-images/image.png)
+
+Após clicar em `Go Gitea`, ele redireciona pra um subdomínio chamado `http://gitea.bintrunk.hc`
+
+![bintrunk 1](/static/images/bintrunk-writeup-images/image1.png)
+
+`sudo vim /etc/hosts`
+
+![bintrunk 2](/static/images/bintrunk-writeup-images/image2.png)
+
+Agora a aplicação abre normalmente.
+
+Clicando em **Explore**, foi possível identificar o repositório que contém código fonte da aplicação.
+
+![bintrunk 3](/static/images/bintrunk-writeup-images/image3.png)
+
+![bintrunk 4](/static/images/bintrunk-writeup-images/image4.png)
+
+![bintrunk 5](/static/images/bintrunk-writeup-images/image5.png)
+
+Agora, para acessar as rotas da API precisamos realizar uma enumeração de subdomínios.
+
+### Fuzzing
+
+```jsx
+ffuf -w /usr/share/wordlists/seclists/Discovery/DNS/shubs-subdomains.txt -u http://bintrunk.hc -H "Host: FUZZ.bintrunk.hc" -ic -c -mc all -fs 1278
+#Ou
+gobuster vhost -u http://bintrunk.hc -w /usr/share/seclists/Discovery/DNS/bitquark-subdomains-top100000.txt --append-domain -t 40
+```
+
+![bintrunk 6](/static/images/bintrunk-writeup-images/image6.png)
+
+Subdomínio encontrado! 😄
+
+Adicionando o novo subdomínio no `/etc/hosts`
+
+![bintrunk 7](/static/images/bintrunk-writeup-images/image7.png)
+
+Após ler o arquivo do repositório `/controllers/api/v1beta/users.js` vemos que podemos ver todos os usuários da API; entretanto, pra acessar essa rota, precisamos registrar um novo usuário, pois a ela protegida por um middleware, que requer autenticação.
+
+![bintrunk 8](/static/images/bintrunk-writeup-images/image8.png)
+
+![bintrunk 9](/static/images/bintrunk-writeup-images/image9.png)
+
+Ao analisarmos o arquivo `/controllers/api/auth.js`, notamos que são necessários
+três parâmetros: `username, email e password` . Verificando o arquivo
+/`controllers/api.js,` identificamos que precisamos fazer uma requisição POST para
+`/api/auth/register`, passando esses três parâmetros.
+
+![bintrunk 10](/static/images/bintrunk-writeup-images/image10.png)
+
+![bintrunk 11](/static/images/bintrunk-writeup-images/image11.png)
+
+![bintrunk 12](/static/images/bintrunk-writeup-images/image12.png)
+
+Depois de registrar o usuário, precisamos nos autenticar para pegarmos o token. Olhando o arquivo auth.js, podemos ver que para se logar, basta realizar uma requisição do tipo POST para `/api/auth/login` , passando os parametros **email** e **password**.
+
+![bintrunk 13](/static/images/bintrunk-writeup-images/image13.png)
+
+![bintrunk 14](/static/images/bintrunk-writeup-images/image14.png)
+
+Com o token em mãos, podemos realizar uma requisição para o endpoint `/api/v1beta/users` passando o header "Authorization: Bearer `token`”
+
+![bintrunk 15](/static/images/bintrunk-writeup-images/image15.png)
+
+Ao analisarmos o arquivo `/controllers/api/user.js`, identificamos uma vulnerabilidade de BOLA (Broken Object Level Authorization). Essa vulnerabilidade nos permite alterar a senha de qualquer usuário ao fornecer o UUID correspondente. Como previamente listamos os usuários, temos acesso aos UUIDs dos usuários, o que possibilita a troca de senha do usuário "ldantas".
+
+Ao revisarmos o código no arquivo `/controllers/api/files.js`, notamos que é possível listar e ler os arquivos dos usuários usando o UUID obtido através do token JWT (`req.user.id`). Portanto, precisaremos trocar a senha do usuário e, em seguida, fazer login na conta dele para obtermos o token referente a este usuário.o
+
+![bintrunk 16](/static/images/bintrunk-writeup-images/image16.png)
+
+![bintrunk 17](/static/images/bintrunk-writeup-images/image17.png)
+
+![bintrunk 18](/static/images/bintrunk-writeup-images/image18.png)
+
+Agora vamos logar no usuário ldantas para pegar o token dele.
+
+![bintrunk 19](/static/images/bintrunk-writeup-images/image19.png)
+
+Com o token em mãos, podemos utilizar a rota `/api/files` para ler os arquivos do usuário ldantas.
+
+![bintrunk 20](/static/images/bintrunk-writeup-images/image20.png)
+
+lendo o arquivo `/api/files/ala7u-ldantas.pem` ele retorna a chave ssh do usuário encodada em base64.
+
+![bintrunk 21](/static/images/bintrunk-writeup-images/image21.png)
+
+---
+
+## Foot Hold
+
+`"echo LS0tLS1CRUdJTiBP…tLS0K" | base64 -d > id.rsa`
+
+![bintrunk 22](/static/images/bintrunk-writeup-images/image22.png)
+
+`chmod 600 id.rsa`
+
+`ssh ldantas@172.16.2.72 -i id.rsa`
+
+![bintrunk 23](/static/images/bintrunk-writeup-images/image23.png)
+
+---
+
+## Privillege Escalation
+
+Temos dois arquivos o diretório /opt/webhook , o primeiro se trata de uma aplicação que está rodando no [localhost:5000](http://localhost:5000) chamado `app.py`
+
+OBS: Daria pra descobrir que o app.py está sendo executado como root com o comando `ps aux | grep "root”`
+
+Basicamente, quando realizamos uma requisição do tipo GET no [localhost:5000](http://localhost:5000), o `app.py` vai executar o script `webhook.sh` .
+
+![bintrunk 24](/static/images/bintrunk-writeup-images/image24.png)
+
+Temos permissão de escrita do script [webhook.sh](http://webhook.sh) , então podemos alterar o script para transformar o `/bin/bash` em SUID, nos permitindo virar root.
+
+![bintrunk 25](/static/images/bintrunk-writeup-images/image25.png)
+
+![bintrunk 26](/static/images/bintrunk-writeup-images/image26.png)
+
+Por fim, é so dar um curl pro localhost.
+
+`curl http://localhost:5000/`
+
+![bintrunk 27](/static/images/bintrunk-writeup-images/image27.png)
+
+---
+
+## Proof
+
+![bintrunk 28](/static/images/bintrunk-writeup-images/image28.png)

