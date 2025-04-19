@@ -1,0 +1,105 @@
+---
+title: 'IAM Writeup'
+date: '2025-03-05'
+tags: ['SSRF', 'Cloud', 'Linux', 'Hacking Club']
+draft: false
+summary: 'IAM Machine has the CVE-2021-40438 vulnerability, which allows SSRF in Apache, resulting in temporary AWS credentials and privilege escalation to root.'
+images: ['/static/images/iam-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/iam-writeup-images/default.png)
+
+---
+
+## Enumeration
+
+`curl -I 172.16.10.21`
+
+![evasion](/static/images/iam-writeup-images/image.png)
+
+This Apache version is vulnerable to SSRF.
+
+https://firzen.de/building-a-poc-for-cve-2021-40438
+
+![evasion 1](/static/images/iam-writeup-images/image1.png)
+
+After that, we listed the `/latest` directory.
+
+![evasion 2](/static/images/iam-writeup-images/image2.png)
+
+Then the `/iam` directory.
+
+![evasion 3](/static/images/iam-writeup-images/image3.png)
+
+Then inside `/security-credentials`.
+
+![evasion 4](/static/images/iam-writeup-images/image4.png)
+
+Finally, in `MACHINE_IAM_ROLE`
+
+![evasion 5](/static/images/iam-writeup-images/image5.png)
+
+With that, we have access to the AWS keys.
+
+![evasion 6](/static/images/iam-writeup-images/image6.png)
+
+---
+
+## Foot Hold
+
+With the credentials, it was possible to log into the application using **aws-cli**.
+
+```python
+export AWS_ACCESS_KEY_ID=
+export AWS_SECRET_ACCESS_KEY=
+export AWS_SESSION_TOKEN=
+```
+
+![evasion 7](/static/images/iam-writeup-images/image7.png)
+
+Listing the bucket, we can grab the first flag and the SSH key for the **op** user.
+
+```bash
+aws s3 ls s3://machine-iam-bucket
+aws s3 cp s3://machina-iam-bucket/op-user-key.pem .
+```
+
+![evasion 8](/static/images/iam-writeup-images/image8.png)
+
+```bash
+chmod 600 op-user-key.pem
+ssh op@172.16.10.21 -i op-user-key.pem
+```
+
+![evasion 9](/static/images/iam-writeup-images/image9.png)
+
+---
+
+## Privilege Escalation
+
+`sudo -l`
+
+We can run `httpd` and `daemon-reload` as root without a password.
+
+![evasion 10](/static/images/iam-writeup-images/image10.png)
+
+Looking at the **httpd** service configuration file, we have write permissions, which we can use to gain root access on the machine.
+
+![evasion 11](/static/images/iam-writeup-images/image11.png)
+
+```bash
+nano /usr/lib/systemd/system/httpd.service
+```
+
+We modify the `ExecStart` line to spawn a reverse shell when we restart the service.
+
+![evasion 12](/static/images/iam-writeup-images/image12.png)
+
+After that, just activate the listener and run the command `sudo /bin/systemctl restart httpd`
+
+```bash
+nc -lnvp 1337
+```
+
+![evasion 13](/static/images/iam-writeup-images/image13.png)

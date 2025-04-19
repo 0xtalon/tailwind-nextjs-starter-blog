@@ -1,20 +1,14 @@
 ---
 title: 'Guardian Writeup'
 date: '2024-06-16'
-tags: ['SQLI', 'CODE INJECTION', 'Linux']
+tags: ['SQLI', 'CODE INJECTION', 'Linux', 'Hacking Club']
 draft: false
-summary: 'Maquina sobre SQL Injection, code injection e reversing (PE).'
+summary: 'Machine involving SQL Injection, code injection, and reversing (PE).'
 images: ['/static/images/guardian-writeup-images/1.png']
 authors: ['default']
 ---
 
 ![Guardian 1](/static/images/guardian-writeup-images/1.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Guardian
 
 ---
 
@@ -37,7 +31,7 @@ PORT   STATE SERVICE VERSION
 Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 ```
 
-Somente as portas 22(SSH) e 80 (HTTP) estão abertas.
+Only ports 22 (SSH) and 80 (HTTP) are open.
 
 ---
 
@@ -45,22 +39,27 @@ Somente as portas 22(SSH) e 80 (HTTP) estão abertas.
 
 ![Guardian 2](/static/images/guardian-writeup-images/2.png)
 
-A primeira coisa que eu tentei for um SQLi (SQL Injection) nessa parte da aplicação , mas não funcionou.
+The first thing I tried was an SQLi (SQL Injection) in this part of the application, but it didn't work.
 
-Entretanto a parte de “Register for first access” é vulnerável.
+However, the "Register for first access" section is vulnerable.
+
 ![Guardian 3](/static/images/guardian-writeup-images/3.png)
 
-Se você passar ‘ or 1=1# diretamente vc já bypassa. Mas eu optei fazer pelo burp.
+If you pass `' or 1=1#` directly, you can already bypass it. But I chose to do it through Burp.
+
 ![Guardian 4](/static/images/guardian-writeup-images/4.png)
 
-Após isso registrei um novo usuário.
+After that, I registered a new user.
+
 ![Guardian 5](/static/images/guardian-writeup-images/5.png)
 
-Quando você tentar se logar , ele diz que precisa a aprovação do admin:
-![Guardian 6](/static/images/guardian-writeup-images/6.png)
-Veja que a aplicação retorna um JWT , eu pensei inicialmente em atacar esse JWT com bruteforce e none attack mas não deu certo.
+When you try to log in, it says that admin approval is required:
 
-Como já temos um SQLi (Sql Injection) na parte de “register for first access” a gente vai usar isso pra alterar a aprovação no banco de dados.
+![Guardian 6](/static/images/guardian-writeup-images/6.png)
+
+Notice that the application returns a JWT. Initially, I thought about attacking this JWT, but it didn't work.
+
+Since we already have an SQLi in the "register for first access" section, we will use it to change the approval status in the database.
 
 ```jsx
 "EIN": "' or 1=1; SELECT table_name FROM information_schema.tables WHERE table_schema=database();-- "
@@ -82,15 +81,17 @@ Como já temos um SQLi (Sql Injection) na parte de “register for first access�
 
 ![Guardian 10](/static/images/guardian-writeup-images/10.png)
 
-Com isso podemos logar no sistema .
+With this, we can log into the system.
+
 ![Guardian 11](/static/images/guardian-writeup-images/11.png)
 
-O sistema não tem muita funcionalidade , somente a rota `/customers` funciona.
+The system does not have many features; only the `/customers` route works.
 
-Quando abrimos a aba de customers e interceptamos , a gente ve que existe um parâmetro chamado “action” sendo passado.
+When we open the customers tab and intercept the request, we see that there is a parameter called **"action"** being passed.
+
 ![Guardian 12](/static/images/guardian-writeup-images/12.png)
 
-Quando passamos o +2\*5 a aplicação retorna o valor 10, ou seja ela está executando a função `eval()` logo o parâmetro `action` é vulnerável a code injection.
+When we pass +2\*5, the application returns the value 10, meaning it is executing the **eval()** function. Therefore, the **action** parameter is vulnerable to code injection.
 
 ```
  "action": "db.getClients('56-7890123') +2*5"
@@ -115,21 +116,21 @@ Quando passamos o +2\*5 a aplicação retorna o valor 10, ou seja ela está exec
 
 ## Privilege Escalation
 
-**SUID** /opt/backup encontrado:
+**SUID** /opt/backup found:
 
 `find / -perm -u=s 2>/dev/null`
 ![Guardian 16](/static/images/guardian-writeup-images/16.png)
 
-Verificando as strings do SUID:
+Checking the strings of the SUID:
 
 `strings backup`
 ![Guardian 17](/static/images/guardian-writeup-images/17.png)
 
-O plano é criar um script chamado `mysqldump` que será invocado antes pelo ELF chamado`backup`.
+The plan is to create a script called **mysqldump**, which will be invoked first by the ELF file named backup.
 
-No Linux, as coisas são executadas em uma ordem específica. Quando executamos um comando, o Linux usa a variável de ambiente `$PATH` para encontrar onde esse programa está localizado (em qual diretório). Podemos modificar isso para fazer o programa procurar primeiro na pasta `/tmp`.
+On Linux, things execute in a specific order. When we run a command, Linux uses the **$PATH** environment variable to find where the program is located (in which directory). We can modify this to make the program look first in the /tmp folder.
 
-Assim, em vez do programa executar sua função normal, faremos com que ele execute nosso script malicioso primeiro:
+So, instead of the program executing its normal function, we will make it execute our malicious script first:
 
 ```bash
 echo '#!/bin/bash' > /tmp/mysqldump
@@ -141,7 +142,7 @@ export PATH=/tmp:$PATH
 
 ![Guardian 18](/static/images/guardian-writeup-images/18.png)
 
-Ou seja, criamos um script malicioso que, quando executado pelo programa SUID `backup` (com `bash -p` para manter as permissões), vai modificar o `/bin/bash` para nos conceder root.
+In other words, we created a malicious script that, when executed by the SUID program backup (using bash -p to retain permissions), will modify **/bin/bash** to grant us root access.
 
 ---
 

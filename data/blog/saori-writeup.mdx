@@ -1,20 +1,14 @@
 ---
 title: 'Saori Writeup'
 date: '2024-07-27'
-tags: ['CVE-2024-29510', 'Linux']
+tags: ['CVE-2024-29510', 'Linux', 'Hacking Club']
 draft: false
-summary: 'Writeup do CTF Saori da Hacking Club.'
+summary: 'Machine for network traffic analysis and vulnerability exploitation in Ghostscript (CVE-2024-29510).'
 images: ['/static/images/saori-writeup-images/1.png']
 authors: ['default']
 ---
 
 ![Saori 1](/static/images/saori-writeup-images/1.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Saori
 
 ---
 
@@ -37,7 +31,7 @@ Service Info: Host: ip-172-16-4-216.ec2.internal; OS: Linux; CPE: cpe:/o:linux:l
 
 ```
 
-Somente as portas 22 (SSH) e 80 (HTTP) estão abertas.
+Only ports 22 (SSH) and 80 (HTTP) are open.
 
 ## Enumeration
 
@@ -46,19 +40,24 @@ Somente as portas 22 (SSH) e 80 (HTTP) estão abertas.
 
 ![Saori 3](/static/images/saori-writeup-images/3.png)
 
-Depois de baixar o client, a gente executa ele e captura o trafego com o wireshark.
+After downloading the client, we run it and capture the traffic with Wireshark.
 
 `chmod +x client`
 `./client`
 
-Quando executamos ele baixa um arquivo chamado `game.sfc`
+When executed, it downloads a file called
+
+`game.sfc`
 ![Saori 4](/static/images/saori-writeup-images/4.png)
 
-Interceptei o download do game.sfc com wireshark:
+I intercepted the download of game.sfc with Wireshark:
+
 ![Saori 5](/static/images/saori-writeup-images/5.png)
 
 ![Saori 6](/static/images/saori-writeup-images/6.png)
-Achamos as credenciais do user abner no campo authorization do HTTP capturado pelo wireshark.
+
+We found the credentials for the user **"abner"** in the Authorization field of the HTTP traffic captured by Wireshark.
+
 Credentials: `abner:m0V55O1qm78MyEluU`
 
 ## Foot Hold
@@ -73,12 +72,15 @@ Credentials: `abner:m0V55O1qm78MyEluU`
 `sudo -l`
 ![Saori 8](/static/images/saori-writeup-images/8.png)
 
-Essa versão do gs tem uma CVE:
+This version of **gs** has a CVE:
+
 `gs --version`
+
 ![Saori 9](/static/images/saori-writeup-images/9.png)
 
 [https://codeanlabs.com/blog/research/cve-2024-29510-ghostscript-format-string-exploitation/](https://codeanlabs.com/blog/research/cve-2024-29510-ghostscript-format-string-exploitation/)
-A CVE original executa a calculadora do gnome , basta alterar pro comando que a gente quiser.
+
+The original CVE launches the GNOME calculator, but we can modify it to execute the command we want.
 
 ```python
 % And now `path_control_active` == 0, so we can use %pipe%

