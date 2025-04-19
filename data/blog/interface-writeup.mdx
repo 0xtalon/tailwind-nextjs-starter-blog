@@ -1,20 +1,14 @@
 ---
 title: 'Interface Writeup'
 date: '2024-10-16'
-tags: ['CVE-2022-29464', 'Linux']
+tags: ['CVE-2022-29464', 'Linux', 'Hacking Club']
 draft: false
-summary: 'Aplicação possui vulnerabilidades são: CVE-2022-29464 upload de arquivo não restrito e execução remota de código, escalonamento de privilégios SUID no binário capsh Docker escape.'
+summary: 'The application has vulnerabilities such as CVE-2022-29464, unrestricted file upload and remote code execution, privilege escalation via SUID binary, and Docker escape.'
 images: ['/static/images/interface-writeup-images/1.png']
 authors: ['default']
 ---
 
 ![Interface 1](/static/images/interface-writeup-images/1.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Interface
 
 ---
 
@@ -121,33 +115,33 @@ Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 
 ```
 
-Foram descobertos apenas as portas 22 (SSH) e 9443 (HTTPS) abertas.
+Only ports 22 (SSH) and 9443 (HTTPS) were discovered open.
 
 ## Enumeration
 
 ### https://172.16.2.58:9443
 
-O servidor nos redireciona para `https://api-manager.hackingclub.local:9443/publisher/`
+The server redirects us to `https://api-manager.hackingclub.local:9443/publisher/`
 
 ![interface 2](/static/images/interface-writeup-images/2.png)
 
-Precisamos adicionar o nome que o servidor esta procurando no DNS local, que no caso é o `api-manager.hackingclub.local`
+We need to add the name that the server is looking for in the local DNS, which in this case is `api-manager.hackingclub.local`
 
 `sudo vim /etc/host`
 
 ![interface 3](/static/images/interface-writeup-images/3.png)
 
-No scan do NMAP foi possível identificar o tipo de servidor que esta rodando (Server: WSO2 Carbon Server). No entanto, não foi possível pegar a versão.
+In the NMAP scan, we were able to identify the type of server running (WSO2).
 
-Pra achar a versão do servidor, existe um endpoint chamado `/services/Version`
+To found the server version, we can go to the endpoint `/services/Version`
 
 ![interface 3](/static/images/interface-writeup-images/4.png)
 
-Com a versão em mãos, foi possível identificar algumas CVEs relacionadas.
+With the version in hand, it was possible to identify some related CVEs.
 
 ![interface 5](/static/images/interface-writeup-images/5.png)
 
-Após executar o exploit, foi possível ganhar uma web-shell.
+After running the exploit, it was possible to get a web shell.
 
 ```
 git clone https://github.com/oppsec/wsob.git
@@ -158,9 +152,9 @@ python3 main.py -u https://api-manager.hackingclub.local:9443
 ![interface 6](/static/images/interface-writeup-images/6.png)
 ![interface 7](/static/images/interface-writeup-images/7.png)
 
-Com isso podemos pegar uma reverse-shell.
+With this, we can get a reverse shell.
 
-A tentativa de obter a shell de modo tradicional não funcionou, pois o servidor não executava os comandos diretamente. A alternativa foi enviar um script via `curl` e salvá-lo na pasta `/tmp`.
+The attempt to obtain the shell traditionally did not work, as the server did not execute commands directly. The alternative was to send a script via curl and save it in the /tmp folder.
 
 `shell.sh`
 
@@ -186,32 +180,35 @@ bash /tmp/revshell.sh
 
 ## Privillege Escalation
 
-Utilizei o Linpeas para enumerar possíveis vetores de escalação de privilégios e identifiquei um SUID que pode ser explorado para obter acesso root.
+I used Linpeas to enumerate possible privilege escalation vectors and identified an SUID that can be exploited to gain root access.
 
 ![interface 10](/static/images/interface-writeup-images/10.png)
 
-Foi possível encontrar esse SUID no GTFOBins.
+I was able to find this SUID in GTFOBins.
 
 ![interface 11](/static/images/interface-writeup-images/11.png)
-Basta rodar o seguinte comando para obter acesso root:
+
+Just run the following command to gain root access:
 
 `/usr/sbin/capsh --gid=0 --uid=0 --`
+
 ![interface 12](/static/images/interface-writeup-images/12.png)
 
 ---
 
 ## Privillege Escalation 2 - Docker Breakout
 
-Utilizamos uma ferramenta chamada “DEEPCE” ([https://github.com/stealthcopter/deepce](https://github.com/stealthcopter/deepce)) para auxiliar na fuga do Docker. Essa ferramenta é semelhante ao Linpeas, mas focada em enumeração de Dockers e Containers.
+We used a tool called “DEEPCE” ([https://github.com/stealthcopter/deepce](https://github.com/stealthcopter/deepce)) to assist in escaping the Docker. This tool is similar to Linpeas but focused on Docker and container enumeration.
 
-Após baixar o script e jogar pra maquina alvo, ele descobriu algumas Capabilities que podemos utilizar pra 'escapar' do docker, nesse caso utilizaremos ela para ler a flag final do CTF.
+After downloading the script and transferring it to the target machine, it discovered some Capabilities that we can use to 'escape' Docker. In this case, we’ll use it to read the final flag of the CTF.
+
 ![interface 13](/static/images/interface-writeup-images/13.png)
 
-Podemos utilizar a capability `CAP_DAC_READ_SEARCH` para ler qualquer arquivo do servidor.
+We can use the `CAP_DAC_READ_SEARCH` capability to read any file on the server.
 
 Vamos utilizar a ferramenta “CDK ([https://github.com/cdk-team/CDK](https://github.com/cdk-team/CDK))” para nos ajudar a explorar essa capability. CDK se trata de uma ferramenta open-source desenvolvida especificamente para pentest em containers.
 
-Após transferir o arquivo para a maquina alvo, podemos executar ele com o seguinte comando:
+After transferring the file to the target machine, we can execute it with the following command:
 
 ```
 chmod +x cdk_linux_amd64

