@@ -1,9 +1,9 @@
 ---
 title: 'HeartMatch Writeup'
 date: '2025-05-12'
-tags: ['Insecure Desseralization', 'Linux', 'Hacking Club']
+tags: ['Insecure Deserialization', 'Linux', 'Hacking Club']
 draft: false
-summary: 'The HeartMatch machine is vulnerable to insecure desseralization and privilege escalation trough SUID'
+summary: 'The HeartMatch machine is vulnerable to insecure deserialization and privilege escalation through SUID.'
 images: ['/static/images/hearthmatch-writeup-images/default.png']
 authors: ['default']
 ---
@@ -147,7 +147,7 @@ Now we need to start our listener
 nc -lnvp 1337
 ```
 
-After that, we send our payload into our cookie session and reload the page, so it can trigger the insecure desseralization
+After that, we send our payload into our session cookie and reload the page to trigger insecure deserialization.
 
 ![heartmatch 13](/static/images/heartmatch-writeup-images/image13.png)
 

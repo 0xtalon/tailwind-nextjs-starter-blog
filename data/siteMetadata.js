@@ -1,18 +1,19 @@
 /** @type {import("pliny/config").PlinyConfig } */
 const siteMetadata = {
   title: 'Talon',
-  author: 'Gabriel Silva',
+  author: 'Gabriel Souza',
   headerTitle: 'Talon',
-  description: '',
+  description:
+    'Cyber defense notes and security research by Gabriel Souza, covering detection, incident investigation, threat hunting, automation, and offensive security.',
   language: 'en-us',
   theme: 'system', // system, dark or light
-  siteUrl: 'https://tailwind-nextjs-starter-blog.vercel.app',
-  siteRepo: 'https://github.com/timlrx/tailwind-nextjs-starter-blog',
+  siteUrl: 'https://www.netwalker.com.br',
+  siteRepo: 'https://github.com/0xtalon/tailwind-nextjs-starter-blog',
   siteLogo: '/static/images/logo.png',
   //socialBanner: '/static/images/twitter-card.png',
   //mastodon: 'https://mastodon.social/@mastodonuser',
   email: 'souzagabriel.bsb@gmail.com',
-  //github: 'https://github.com',
+  github: 'https://github.com/0xtalon',
   //x: 'https://twitter.com/x',
   // twitter: 'https://twitter.com/Twitter',
   //facebook: 'https://facebook.com',
