@@ -3,8 +3,7 @@ const siteMetadata = {
   title: 'Talon',
   author: 'Gabriel Souza',
   headerTitle: 'Talon',
-  description:
-    'Cyber defense notes and security research by Gabriel Souza, covering detection, incident investigation, threat hunting, automation, and offensive security.',
+  description: '',
   language: 'en-us',
   theme: 'system', // system, dark or light
   siteUrl: 'https://www.netwalker.com.br',
